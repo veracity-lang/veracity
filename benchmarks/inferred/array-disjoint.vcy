@@ -1,0 +1,18 @@
+int main(int argc, string[] argv) {
+	int[] a = new int[5];
+
+	int c = int_of_string(argv[1]);
+
+	int i = int_of_string(argv[2]);
+	int j = int_of_string(argv[3]);
+
+	int x = int_of_string(argv[4]);
+	int y = int_of_string(argv[5]);
+
+	commute _ {
+		{ a[i] = x; busy_wait(c);}
+		{ a[j] = y; busy_wait(c);}
+	}
+
+	return 0;
+}

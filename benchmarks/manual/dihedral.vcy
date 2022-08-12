@@ -1,0 +1,117 @@
+/* https://www.whitman.edu/documents/Academics/Mathematics/SeniorProject_CodyClifton.pdf */
+
+int n = 1;
+
+/* r and s are generators of dihedral group Dn 
+ * All rigid motions are representable as r^k or r^k*s
+ */
+
+int rk(int a, int k) => (a + k) % n;
+int r(int a)         => rk(a, 1);
+
+int s(int a) => (n - a) % n;
+
+int[] id() {
+    int[] a = new int[n];
+    for (int i = 0; i < n; i = i + 1;) {
+        a[i] = i;
+    }
+    return a;
+}
+
+/* Apply rigid motions 
+ * Rotation and symmetry operations can be
+ *   started at the middle of the array and wrapped around,
+ *   instead of starting at the beginning.
+ * That way, if two threads are operating on the array,
+ *   one can be offset from the other,
+ *   making it less likely that they will fight over values.
+ */
+
+void mrk(int[] x, int k, bool start_in_middle) {
+    int m = start_in_middle ? n / 2 : 0;
+    for (int i = m; i < n; i = i + 1;) {
+        x[i] = rk(x[i], k);
+    }
+    for (int i = 0; i < m; i = i + 1;) {
+        x[i] = rk(x[i], k);
+    }
+    return;
+}
+
+void mr(int[] x) {
+    mrk(x, 1);
+    return;
+}
+
+void ms(int[] x, bool start_in_middle) {
+    int m = start_in_middle ? n / 2 : 0;
+    for (int i = m; i < n; i = i + 1;) {
+        x[i] = s(x[i]);
+    }
+    for (int i = 0; i < m; i = i + 1;) {
+        x[i] = s(x[i]);
+    }
+    return;
+}
+
+
+/* Inputs are
+ *   n > 1
+ *   r1 >= 0
+ *   s1 in [0, 1]
+ *   r2 >= 0
+ *   s2 in [0, 1]
+ *  
+ * First rigid motion is r^r1 * s^s1
+ * Second rigid motion is r^r2 * s^s2
+ */
+
+int main(int argc, string[] argv) {
+    n = int_of_string(argv[1]);
+
+    int[] a = id();
+
+    /* Rigid motion 1 */
+    int r1 = int_of_string(argv[2]) % n;
+    bool s1 = int_of_string(argv[3]) > 0;
+
+    /* Rigid motion 2 */
+    int r2 = int_of_string(argv[4]) % n;
+    bool s2 = int_of_string(argv[5]) > 0;
+
+
+    /* If s1 and not s2 then commute if
+            n is even and r2 = 0 or r2 = n/2
+            n is odd and r2 = 0
+       If not s1 and s2 then commute if
+            n is even and r1 = 0 or r1 = n/2
+            n is odd and r1 = 0
+       If s1 and s2 then commute if
+            r1 = r2
+       If not s1 and not s2 then always commute
+    */
+    bool phi =
+        (!s1 && !s2) ||
+        (s1 && !s2 && (r2 == 0 || (n % 2 == 0 && r2 == n / 2))) ||
+        (!s1 && s2 && (r1 == 0 || (n % 2 == 0 && r1 == n / 2))) ||
+        (s1 && s2 && r1 == r2);
+    
+    /*print(phi ? "true\n" : "false\n");*/
+
+    commute (phi) {
+        { mrk(a, r1, true);
+          if (s1) { ms(a, true); }
+        }
+        { mrk(a, r2, false);
+          if (s2) { ms(a, false); }
+        }
+    }
+
+    for (int i = 0; i < n; i = i + 1;) {
+        print(string_of_int(a[i]) ^ " ");
+    }
+    print("\n");
+
+    return (phi ? 1 : 0);
+}

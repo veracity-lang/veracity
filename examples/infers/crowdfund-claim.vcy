@@ -1,0 +1,94 @@
+/* https://developer.algorand.org/solutions/example-crowdfunding-stateful-smart-contract-application/ */
+/*
+cd /veracity/veracity/src && ./vcy.exe infer ../programs/crowdfund-claim.vcy
+*/
+/*** Globals ***/
+int f_start_date = 5;
+int f_end_date = 10;
+int f_goal = 10000;
+int f_amount = 15;
+int addr_f_escrow = 101;
+int addr_f_creator = 102;
+int addr_f_receiver = 103;
+int addr_f_CloseRemainderTo = 4;
+int f_close_date = 9;
+
+int addr_noone = -1;
+
+/* How much an actor has given */
+hashtable[int,int] given = new hashtable[int,int];
+hashtable[int,int] balances = new hashtable[int,int];
+
+/*** 1 ***/
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int s1 = 0;
+    int s2 = 0;
+    /* params to first call:*/
+    int addr_who1 = int_of_string(argv[1]);
+    int addr_sender1 = 101; 
+    int addr_receiver1 = int_of_string(argv[3]);
+    int amount1 = int_of_string(argv[4]);
+    int nowTS = 7; /*int_of_string(argv[5]);*/
+    int addr_who2 = int_of_string(argv[6]);
+    int addr_sender2 = int_of_string(argv[7]);
+    int addr_receiver2 = int_of_string(argv[8]);
+    int amount2 = int_of_string(argv[9]);
+    int value = 0;
+    balances[addr_sender1] = 100000;
+    balances[addr_sender2] = 200000;
+    /* Expected phi:
+                  (   (addr_sender1 != addr_sender2 && addr_receiver1 != addr_receiver2)
+                  ||  (addr_sender1   != addr_f_escrow)
+                  ||  (addr_receiver1 != addr_f_receiver)
+                  ||  (addr_receiver1 != addr_f_CloseRemainderTo)
+                  ||  (addr_sender2   != addr_f_escrow)
+                  ||  (addr_receiver2 != addr_f_receiver)
+                  ||  (addr_receiver2 != addr_f_CloseRemainderTo)
+                  ||  (f_close_date > nowTS)
+                  ||  (f_goal > f_amount)) */
+    commute_par _ {
+        {  /* Claim */
+            if (addr_sender1   != addr_f_escrow) { s1 = 0; } else {
+            if (addr_receiver1 != addr_f_receiver) { s1 = 0; } else {
+            if (addr_receiver1 != addr_f_CloseRemainderTo) { s1 = 0; } else {
+            if (f_close_date > nowTS) { s1 = 0; } else {
+            if (f_goal > f_amount) { s1 = 0; } else {
+            if (ht_mem(balances,addr_sender1)) {
+                /* transfer */
+                if (ht_mem(balances,addr_receiver1)) {
+                    value = (ht_get(balances, addr_receiver1) + f_amount);
+                    ht_put(balances, addr_receiver1, value);
+                } else {
+                    ht_put(balances, addr_receiver1, f_amount);
+                }
+                /* escrow account must exist */
+                value = ht_get(balances, addr_sender1) - f_amount;
+                ht_put(balances, addr_sender1, value);
+                s1 = 1;
+            } else { s1 = 0; }    }}}}}
+        }
+        {  /* Claim */
+            if (addr_sender2   != addr_f_escrow) { s2 = 0; } else {
+            if (addr_receiver2 != addr_f_receiver) { s2 = 0; } else {
+            if (addr_receiver2 != addr_f_CloseRemainderTo) { s2 = 0; } else {
+            if (f_close_date > nowTS) { s2 = 0; } else {
+            if (f_goal > f_amount) { s2 = 0; } else {
+            if (ht_mem(balances,addr_sender2)) {
+                    /* transfer */
+                    if (ht_mem(balances,addr_receiver2)) {
+                        value = (ht_get(balances, addr_receiver2) + f_amount);
+                        ht_put(balances, addr_receiver2, value);
+                    } else {
+                        ht_put(balances, addr_receiver2, f_amount);
+                    }
+                    /* escrow account must exist */
+                    value = ht_get(balances, addr_sender2) - f_amount;
+                    ht_put(balances, addr_sender2, value);
+                    s2 = 1;
+            } else { s2 = 0; }    }}}}}
+        }
+    }
+    int t = ht_get(balances,addr_sender1);/*balances[addr_sender1];*/
+    return t;
+}

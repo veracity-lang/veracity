@@ -1,0 +1,22 @@
+int fact(int x) {
+    int y = 1;
+    while (x > 0) {
+        y = y * x;
+        x = x - 1;
+    }
+    return y;
+}
+
+
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    print(string_of_int(fact(x)) ^ "\n");
+    
+    int y = 0;
+    while (true) {
+        if (y > 10) {
+            return y;
+        }
+        y = y + 1;
+    }
+}

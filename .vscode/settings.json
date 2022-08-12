@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.vcy": "c",
+        "random": "c"
+    }
+}

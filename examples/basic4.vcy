@@ -1,0 +1,17 @@
+int x = 5;
+int y = 7;
+
+int a(int x) {
+    x = x * 2;
+    return x;
+}
+
+int b(int z) {
+    y = y * 2;
+    return z;
+}
+
+/* Expect 36 + 12 + 5 + 14 = 67 */
+int main(int argc, string[] argv) {
+    return a(18) + b(12) + x + y;
+}

@@ -1,0 +1,12 @@
+int main(int argc, string[] argv) {
+	int c = 42;
+
+	mutex_init(0);
+	commute (true) {
+		{ mutex_lock(0); c = c + 1; mutex_unlock(0); }
+		{ mutex_lock(0); if (c > 0) { c = c - 1; mutex_unlock(0); } else { mutex_unlock(0); }}
+	}
+
+	print(string_of_int(c) ^ "\n");
+	return 0;
+}

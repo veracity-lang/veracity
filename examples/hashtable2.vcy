@@ -1,0 +1,7 @@
+int main(int argc, string[] argv) {
+    hashtable[string, hashtable[string, int]] nested =
+        new hashtable[string, hashtable[string, int]];
+    nested["foo"] = new hashtable[string, int];
+    nested["foo"]["bar"] = 42;
+    return nested["foo"]["bar"];
+}

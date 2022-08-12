@@ -1,0 +1,16 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+    int n = int_of_string(argv[3]);
+
+    commute_par _ {
+        { x = (x + y) % n; }
+        { x = 2 * x; }
+    }
+
+    print(string_of_int(x) ^ "\n");
+
+    return 0;
+}
+
+/* 2x < n /\ y % n = 0 */

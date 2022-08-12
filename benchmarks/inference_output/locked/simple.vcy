@@ -1,0 +1,32 @@
+void compute1(bool cond){} 
+void compute2(bool cond){}
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int t = int_of_string(argv[2]);
+    int a = int_of_string(argv[3]);
+    int b = int_of_string(argv[4]);
+    int c = int_of_string(argv[5]);
+    int u = int_of_string(argv[6]);
+    if(c>a) {
+        int a0 = a;
+        commute (c>a) {
+            {
+                t = /*compute1(c > b);*/
+                    ((c > b) ? 2 : 1); busy_wait(n);
+                a = a - ((t < 0) ? -t : t);
+            }
+            {
+                u = /*compute2(c > a);*/
+                    ((c > a0) ? 2 : 1); busy_wait(n);
+            }
+        }
+    } else {
+            t = /*compute1(c > b);*/
+                ((c > b) ? 2 : 1); busy_wait(n);
+            a = a - ((t < 0) ? -t : t);
+            u = /*compute2(c > a);*/
+                ((c > a) ? 2 : 1); busy_wait(n);
+    }
+    return 0;
+}

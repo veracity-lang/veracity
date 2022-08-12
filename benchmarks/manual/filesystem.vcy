@@ -1,0 +1,30 @@
+
+int[] data = new int[1024];
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+
+    hashtable[string, string] ht = new hashtable[string, string];
+    
+    for(int i = 0; i < 1024; i = i + 1;) {
+        data[i] = i;
+    }
+    
+    string fname1 = "test1.txt";
+    string fname2 = "test2.txt";
+    
+    commute (fname1 != fname2) {
+        { 
+            out_channel fout1 = open_write(fname1);
+            for(int i=0; i < n; i = i + 1;) { write(fout1, string_of_int(data[i%1024]) ^ "\n"); } 
+            close(fout1);
+        }
+        { 
+            out_channel fout2 = open_write(fname2);
+            for(int i=n-1; i >= 0; i = i - 1;) { write(fout2, string_of_int(data[i%1024]) ^ "\n"); } 
+            close(fout2);
+        }
+    }
+    
+    return 0;
+}

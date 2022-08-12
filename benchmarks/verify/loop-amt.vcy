@@ -1,0 +1,35 @@
+int main(int argc, string[] argv) {
+    int i = int_of_string(argv[1]);
+    int ctr = int_of_string(argv[2]);
+    int amt = 2;
+    int n = i;
+    int amt_pre = 0;
+    int i_pre = 0;
+    mutex_init(0); 
+    commute (i % 2 == 0 && (ctr > 0 && amt > 0 || ctr <= 0 && amt < -ctr)) {
+        {
+            /* this only works if i is initially even. */
+            amt_pre = amt;
+            i_pre = i;
+            while(i>0) { 
+                if(i%2 == 0) {
+                    amt = amt * -1;
+                } else {
+                    amt = amt * i * -1;
+                }
+                i = i - 1;
+            }
+            /* need a strong enough loop invariarnt to show that amt>0 here */
+            /* LOOP SUMMARY */
+            havoc amt; havoc i; assume( amt == amt_pre || i_pre%2!=0 );
+            /* END SUMMARY */
+            mutex_lock(0); ctr = ctr + amt; mutex_unlock(0); 
+            i = 0; amt = 0; i_pre = 0; amt_pre = 0;
+        }
+        {   
+            mutex_lock(0); if (ctr > 0) { ctr = ctr - 1; } mutex_unlock(0); busy_wait(n);
+        }
+    }
+    
+    return 0;
+}

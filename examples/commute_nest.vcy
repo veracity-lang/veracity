@@ -1,0 +1,22 @@
+int x = 0;
+
+int f() {
+    int y = 1;
+    commute_par (true) {
+        {   x = x + 1; 
+            int z = 0;
+            commute_par (true) {
+                { z = z + 2; }
+                { x = z + y; }
+            }
+        }
+        { y = y + 1; }
+    }
+    return y;
+}
+
+int main(int argc, string[] argv) {
+    int y = f();
+    print(string_of_int(y) ^ " " ^ string_of_int(x) ^ "\n");
+    return 0;
+}

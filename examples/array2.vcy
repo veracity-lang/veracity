@@ -1,0 +1,42 @@
+void print_result(int i, int x) {
+    string suffix = "th";
+    if (i == 1) { suffix = "st"; }
+    else if (i == 2) { suffix = "nd"; }
+    else if (i == 3) { suffix = "rd"; }
+    print(
+        "The " ^ string_of_int(i) ^ suffix ^
+        " Fibonacci number is " ^ string_of_int(x) ^
+        ".\n"
+    );
+    return;
+}
+
+void compute(int max, int[] values) {
+    for (int i = 2; i < max; i = i + 1;) {
+        values[i] = values[i - 1] + values[i - 2];
+    }
+    return;
+}
+
+int main(int argc, string[] argv) {
+    int len = int_of_string(argv[1]);
+
+    if (len < 1) {
+        print("Argument must be positive.\n");
+        return -1;
+    } else if (len == 1) {
+        print_result(1, 0);
+        return 0;
+    } else if (len == 2) {
+        print_result(2, 1);
+        return 1;
+    }
+
+    int[] values = new int[len];
+    values[0] = 0;
+    values[1] = 1;
+    compute(len, values);
+
+    print_result(len, values[len - 1]);
+    return 0;
+}

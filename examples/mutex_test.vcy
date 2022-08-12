@@ -1,0 +1,13 @@
+int main(int argc, string[] argv) {
+    int x = 20000;
+    mutex_init(1);
+    commute_par {
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+        { mutex_lock(1); busy_wait(x); mutex_unlock(1); }
+    }
+    return 0;
+}

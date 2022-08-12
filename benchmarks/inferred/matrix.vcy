@@ -1,0 +1,26 @@
+int main(int argc, string[] argv) {
+    int size = int_of_string(argv[1]);
+    int s = 0;
+    int x = int_of_string(argv[2]);
+    int y = int_of_string(argv[3]);
+    int z = int_of_string(argv[4]);
+    int yy = 0;
+    int out = 0;
+    commute _ {
+        {
+          yy = y; busy_wait(size); s = yy;
+          x = s*x; y = 3*yy;
+          z = z + 2*yy;
+          s = 0; yy = 0;
+        } 
+        { 
+          yy = y;
+          x = 5*x; y = 4*yy; 
+          z = 3*z - yy;
+          busy_wait(size); out = z;
+          yy = 0;
+        }
+    }
+
+    return x;
+}

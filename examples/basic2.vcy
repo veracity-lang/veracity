@@ -1,0 +1,6 @@
+int main(int argc, string[] argv) {
+    int x = 7;
+    int y = 9;
+    int z = x + y;
+    return z;
+}

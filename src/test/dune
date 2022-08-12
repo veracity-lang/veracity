@@ -1,0 +1,8 @@
+(include_subdirs no)
+
+(test
+    (name test)
+    (libraries ounit2 vcy)
+    (modules test)
+    (action (setenv LD_LIBRARY_PATH .. (run %{test})))
+)

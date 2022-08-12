@@ -1,0 +1,50 @@
+
+/*int mod(int q, int d) {
+    while(q >= d) {
+        q = q - d;
+    }
+    return q;
+}*/
+
+int hash(string s) {
+    int[] x = array_of_string(s);
+    int acc = 0;
+    for(int i = 0; i < length_of_array(x); i = i + 1;) {
+        acc = acc + x[i];
+    }
+    return acc % 16;
+}
+
+void add_to_hashset(string[][] set, int[] lengths, string to_add) {
+    int bin = hash(to_add);
+    int pos = lengths[bin];
+    string[] bin_arr = set[bin];
+    bin_arr[pos] = to_add;
+    lengths[bin] = pos + 1;
+    return;
+}
+
+bool lookup_from_hashset(string[][] set, int[] lengths, string to_lookup) {
+    int bin = hash(to_lookup);
+    for(int i = 0; i < lengths[bin]; i = i+1;) {
+        if(set[bin][i] == to_lookup) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int main(int argc, string[] argv) {
+    string[][] my_hashset = new string[][16];
+    for(int i = 0; i < length_of_array(my_hashset); i = i+1;) {
+        my_hashset[i] = new string[10]; 
+    }
+    int[] my_lengths = new int[16];
+    for(int i = 0; i < length_of_array(my_lengths); i = i+1;) { 
+        my_lengths[i] = 0;
+    }
+    add_to_hashset(my_hashset, my_lengths, argv[1]);
+    print(string_of_bool(lookup_from_hashset(my_hashset, my_lengths, argv[1])));
+    print("\n");
+    return hash(argv[1]);
+}

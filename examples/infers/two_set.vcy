@@ -1,0 +1,44 @@
+/* From VMCAI 2021 */
+
+int a = -1;
+int b = -1;
+int size = 0;
+
+/* Assume x >= 0 */
+void add(int x) {
+    if (size == 0) {
+        a = x;
+        size = size + 1;
+        return;
+    }
+    if (a == x || b == x) {
+        return;
+    }
+    if (a == -1) {
+        a = x;
+        size = size + 1;
+        return;
+    }
+    if (b == -1) {
+        b = x;
+        size = size + 1;
+        return;
+    }
+    return;
+}
+
+bool mem(int x) {
+    return a == x || b == x;
+}
+
+void clear() {
+    a = -1;
+    b = -1;
+    size = 0;
+    return;
+}
+
+
+int main(int argc, string[] argv) {
+
+}

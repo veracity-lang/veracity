@@ -1,0 +1,21 @@
+(include_subdirs unqualified)
+
+(library
+ (name vcy)
+ (public_name vcy)
+ (libraries unix threads str servois2)
+ (modules (:standard \ parallel_multicore parallel_singlecore run))
+ (wrapped true)
+ (library_flags -linkall)
+ (synopsis "Veracity language"))
+ 
+(executable
+ (name run)
+ (public_name vcyrun)
+ (modules run)
+ (libraries vcy)
+ (promote (until-clean)))
+
+(env
+ (dev
+  (flags (:standard -warn-error -A -w -27-33 ))))

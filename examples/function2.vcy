@@ -1,0 +1,6 @@
+int fact (int x) =>
+    (x < 2) ? (1) : (x * fact(x - 1)); 
+
+int main(int argc, string[] argv) {
+    return fact(5);
+}

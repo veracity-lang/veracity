@@ -1,0 +1,8 @@
+int main(int argc, string[] argv) {
+    for (int i = 0; i < 20; i = i + 1;) {
+        int r = random(10, 20);
+        print(string_of_int(r) ^ " ");
+    }
+    print("\n");
+    return 0;
+}

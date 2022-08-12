@@ -1,0 +1,13 @@
+int x = 0;
+
+int main(int argc, string[] argv) {
+    commute_par {
+        { x = x + 1; print("A"); }
+        { x = x + 1; print("B"); }
+        { x = x + 1; print("C"); }
+        { x = x + 1; print("D"); }
+        { x = x + 1; print("E"); }
+    }
+    print("\n");
+    return x;
+}

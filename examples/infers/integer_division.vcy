@@ -1,0 +1,8 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    commute_par _ {
+        { x = x * 2; }
+        { x = x / 2; }
+    }
+    return x;
+}

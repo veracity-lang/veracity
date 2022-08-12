@@ -1,0 +1,36 @@
+int size = 10;
+int top =5;
+int nextToTop=6;
+int secondToTop=7;
+int thirdToTop=8;
+
+
+void push(int v) {
+    if (size >= 0){
+        size = size + 1;
+
+        thirdToTop = secondToTop;
+        secondToTop = nextToTop;
+        nextToTop = top;
+        top = v;
+    }
+    return;
+}
+
+int pop() {
+    if (size >= 1){
+        size = size - 1;
+        secondToTop = thirdToTop;
+        nextToTop = secondToTop;
+        top = nextToTop;
+        return top;
+    }
+    return;
+}
+
+void clear() {
+    if (size  >= 0){
+       size = 0;
+    }
+    return;
+}

@@ -1,0 +1,15 @@
+int main(int argc, string[] argv) {
+	int size = int_of_string(argv[1]);
+	int x = int_of_string(argv[2]);
+	int y = int_of_string(argv[2]);
+	int b = 0;
+	
+	mutex_init(1);
+	
+	commute (y < 0 - 3*x && x == 2 || y >= 0 && x == 3) {
+		{ busy_wait(size); mutex_lock(1); y = y + 3*x; mutex_unlock(1); }
+		{ mutex_lock(1); if (y < 0) { x = 2; } else { x = 3; } mutex_unlock(1); busy_wait(size); }
+	}
+
+	return x;
+}

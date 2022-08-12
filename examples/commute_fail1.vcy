@@ -1,0 +1,15 @@
+bool f(int x) {
+    return x > 1;
+}
+
+int main(int argc, string[] argv) {
+    commute_seq (argc > 1) {
+        { print("1\n"); }
+        { print("2\n"); }
+        { print("3\n"); }
+        { print("4\n"); }
+        { print("5\n"); return 0; }
+        { print("6\n"); }
+    }
+    return 0;
+}

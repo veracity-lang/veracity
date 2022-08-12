@@ -1,0 +1,42 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = x;
+    int s1 = 0;
+    int s2 = 0;
+    int acc = 0;
+    
+    havoc x; assume(x>0);
+    havoc y; assume(y>0);
+    
+    havoc s1;
+    havoc s2;
+    int x_pre = 0; int y_pre = 0;
+    int s1_pre = 0;
+    commute _ {
+        {
+            x_pre = x; y_pre = y; s1_pre = s1;
+            while(x>0) { x = x - 1; s1 = s1 + 1; }
+            /* LOOP SUMMARY */
+            havoc s1;
+            assume (s1 == x_pre + s1_pre);
+            havoc x;
+            assume (x == 0);
+            /* END SUMMARY*/
+            acc = acc + s1;
+            x_pre = 0; y_pre = 0; s1_pre = 0;
+        }
+        {
+            x_pre = x; y_pre = y;
+            while(y>0) { y = y - 1; s2 = s2 + x; }
+            /* LOOP SUMMARY */
+            havoc s2;
+            assume (s2 == y_pre * x_pre);
+            havoc y;
+            assume (y == 0);
+            /* END SUMMARY */
+            acc = acc + s2;
+            x_pre = 0; y_pre = 0; s1_pre = 0;
+        }
+    }
+    return 0;
+}

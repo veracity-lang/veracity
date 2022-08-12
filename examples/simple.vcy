@@ -1,0 +1,32 @@
+/* Based on 'simple.cc' example in 'fetch-and-add' */
+
+int x = 0;
+
+int some_long_computation(int p) {
+    int i = 1048576;
+    while (i > 0) {
+        i = i - 1;
+    }
+    return p;
+}
+
+void foo() {
+    x = x + 5;
+    int z = some_long_computation(42);
+    x = x + z;
+    return;
+}
+
+void bar() {
+    x = x + 5;
+    int t = some_long_computation(43);
+    x = x + t;
+    return;
+}
+
+int main(int argc, string[] argv) {
+    foo();
+    bar();
+    print(string_of_int(x) ^ "\n");
+    return 0;
+}

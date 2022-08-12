@@ -1,0 +1,15 @@
+int main(int argc, string[] argv) {
+	int w = int_of_string(argv[1]);
+	int x = 0;
+	int y = random(0, 100);
+	mutex_init(1);
+	commute _ {
+		{ commute _ { 
+			  { mutex_lock(1); x = 0; mutex_unlock(1); busy_wait(w); }
+			  { mutex_lock(1); x = x * 2; mutex_unlock(1); }
+		  } }
+		{ y = x; busy_wait(w); }
+	}
+
+	return x;
+}

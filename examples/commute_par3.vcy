@@ -1,0 +1,27 @@
+int f(int x) {
+    int y = x;
+    if (x < 2) {
+        return 1;
+    }
+    y = y * f(x - 1);
+    return y;
+}
+
+/*
+    This is an interesting case where parallel commute fails,
+    presumably because assignments aren't atomic.
+*/
+
+
+int main(int argc, string[] argv) {
+    int x = 0;
+    commute_par (argc > 1) {
+        { x = x + f(5); print("A"); }
+        { x = x + f(4); print("B"); }
+        { x = x + f(3); print("C"); }
+        { x = x + f(2); print("D"); }
+        { x = x + f(1); print("E"); }
+    }
+    print("\n");
+    return x;
+}

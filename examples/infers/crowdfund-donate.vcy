@@ -1,0 +1,82 @@
+/* https://developer.algorand.org/solutions/example-crowdfunding-stateful-smart-contract-application/ */
+/*
+cd /veracity/veracity/src && ./vcy.exe infer ../programs/crowdfund-claim.vcy
+*/
+/*** Globals ***/
+int f_start_date = 5;
+int f_end_date = 10;
+int f_goal = 10000;
+int f_amount = 15;
+int addr_f_escrow = 101;
+int addr_f_creator = 102;
+int addr_f_receiver = 103;
+int addr_f_CloseRemainderTo = 4;
+int f_close_date = 9;
+
+int addr_noone = -1;
+
+/* How much an actor has given */
+hashtable[int,int] given = new hashtable[int,int];
+hashtable[int,int] balances = new hashtable[int,int];
+
+/*** 1 ***/
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int r = int_of_string(argv[2]);
+    int y = int_of_string(argv[3]);
+    int z = int_of_string(argv[4]);
+    int t = int_of_string(argv[5]);
+    /* params to first call:*/
+    int nowTS = 7;
+    int amount1 = 100;
+    int amount2 = 150;
+    int donator1 = 1;
+    int donator2 = 2;
+    ht_put(balances, addr_f_escrow, 0);
+    ht_put(balances, donator1, 100000);
+    ht_put(balances, donator2, 200000);
+    commute_par _ {
+        {  
+            if (nowTS <= f_start_date || nowTS >= f_end_date) { t = 0; } else {
+                if(ht_get(balances, donator1) < amount1) { t = 0; } else {
+                    f_amount = f_amount + amount1;
+                    y = ht_get(balances,addr_f_escrow);
+                    z = y + amount1;
+                    ht_put(balances, addr_f_escrow, z);
+                    y = ht_get(balances,donator1);
+                    z = y - amount1;
+                    ht_put(balances, donator1, z);
+                    if(ht_mem(given, donator1)) { 
+                        y = ht_get(given,donator1);
+                        z = y + amount1;
+                        ht_put(given, donator1, z);
+                    }
+                    else { 
+                        ht_put (given, donator1, amount1);
+                    }
+                }
+            }
+        }
+        {
+            if (nowTS <= f_start_date || nowTS >= f_end_date) { r = 0; } else {
+                if(ht_get(balances, donator2) < amount2) { r = 0; } else {
+                    f_amount = f_amount + amount2;
+                    y = ht_get(balances,addr_f_escrow);
+                    z = y + amount2;
+                    ht_put(balances, addr_f_escrow, z);
+                    y = ht_get(balances,donator2);
+                    z = y - amount2;
+                    ht_put(balances, donator2, z);
+                    if(ht_mem(given, donator2)) { 
+                        y = ht_get(given,donator2);
+                        z = y + amount2;
+                        ht_put(given, donator2, z);
+                    }
+                    else { 
+                        ht_put (given, donator2, amount2);
+                    }
+            }   }
+        }
+    }
+    return balances[addr_f_escrow];
+}

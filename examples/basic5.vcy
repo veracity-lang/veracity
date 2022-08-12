@@ -1,0 +1,13 @@
+int a = 0;
+int b = 0;
+
+
+int main(int argc, string[] argv) {
+    int c = 10;
+    while (c > 0) {
+        a = a + b;
+        b = b + 1;
+        c = c - 1;
+    }
+    return a;
+}

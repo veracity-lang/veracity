@@ -1,0 +1,23 @@
+int main(int argc, string[] argv) {
+    hashtable[int,int] tbl = new hashtable[int,int];
+    
+    commute_par(true) {
+        { tbl[0] = 0; tbl[8] = 8; }
+        { tbl[1] = 1; tbl[9] = 9; }
+        { tbl[2] = 2; tbl[10] = 10; }
+        { tbl[3] = 3; tbl[11] = 11; }
+        { tbl[4] = 4; tbl[12] = 12; }
+        { tbl[5] = 5; tbl[13] = 13; }
+        { tbl[6] = 6; tbl[14] = 14; }
+        { tbl[7] = 7; tbl[15] = 15; }
+    }
+    
+    for(int i=0; i<16; i=i+1;) {
+        print(string_of_int(tbl[i]));
+        print("\n");
+    }
+    
+    print(string_of_int(ht_size(tbl)));
+    
+    return 0;
+}

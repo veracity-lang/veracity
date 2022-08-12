@@ -1,0 +1,23 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+    
+    havoc x; assume(x>0);
+    havoc y; assume(y>0);
+
+    commute _ {
+        {
+            while(x>0) { x = x - 1; }
+            /* LOOP SUMMARY */
+            havoc x; assume (x == 0);
+            /* END SUMMARY */
+        }
+        {
+            while(y>0) { y = y - 1; }
+            /* LOOP SUMMARY */
+            havoc y; assume (y == 0);
+            /* END SUMMARY */
+        }
+    }
+    return 0;
+}

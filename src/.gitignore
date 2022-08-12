@@ -1,0 +1,14 @@
+vcy_parser.ml
+vcy_parser.mli
+vcy_lexer.ml
+parallel.ml
+parser.conflicts
+cvc4_lexer.ml
+cvc4_parser.ml
+cvc4_parser.mli
+_build
+vcy.exe
+
+libhtable.a
+libhtable.so
+

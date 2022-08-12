@@ -1,0 +1,119 @@
+
+void busy(int fuel) {
+    while (fuel > 0) {
+        fuel = fuel - 1;
+    }
+    return;
+}
+
+void lock(int l) { mutex_lock(l); return; }
+void unlock(int l)  { mutex_unlock(l); return; }
+
+void addOrInit(hashtable[int, int] table, int key, int amount) {
+    table[key] = lookupDefault(table, key, 0) + amount;
+    return;
+}
+
+int lookupDefault(hashtable[int, int] table, int key, int v_0) {
+    if(ht_mem(table, key)) { return table[key]; }
+    else { return v_0; }
+}
+
+int f_start_date = 5;
+int f_end_date = 10;
+int f_goal = 10000;
+int f_amount = 15;
+int addr_f_escrow = 101;
+int addr_f_creator = 102;
+int addr_f_receiver = 103;
+bool f_CloseRemainderTo = false;
+int f_close_date = 9;
+
+int addr_noone = -1;
+
+int x = 0;
+
+/* How much an actor has given */
+hashtable[int,int] given = new hashtable[int,int];
+hashtable[int,int] balances = new hashtable[int,int];
+
+int donate(int donator, int amount, int nowTS) {
+    int r = 0;
+    /* Ensures the donation is within the beginning and ending dates of the fund. */
+    if (nowTS <= f_start_date || nowTS >= f_end_date) { r = 0; } else {
+        /* Verifies that this is a grouped transaction with the second one being a payment to the escrow. */
+        lock(donator);
+        int curBal = lookupDefault(balances, donator, 0);
+        unlock(donator);
+        if(curBal < amount) { r = 0; } else {
+            lock(donator);
+            lock(0);
+            lock(addr_f_escrow);
+            f_amount = f_amount + amount;
+            addOrInit(balances, addr_f_escrow, amount);
+            addOrInit(balances, donator, -amount);
+            unlock(0);
+            unlock(addr_f_escrow);
+            addOrInit(given, donator, amount);
+            addOrInit(balances, donator, amount);
+            unlock(donator);
+            busy(x);
+            r = 1;
+    }   }
+    return r;
+}
+
+int reclaim(int donator, int amount, int nowTS) {
+   if (f_close_date > nowTS) { return 0; }
+   if (f_goal < f_amount) { return 0; }
+
+   int fee = 0;
+   int t = amount + fee;
+   lock(donator);
+   int g = given[donator];
+   unlock(donator);
+   if (t > g) { return 0; }
+   if (f_CloseRemainderTo) { return 0; }
+   if (! ht_mem(balances, addr_f_escrow)) { return 0; }
+   lock(donator);
+   lock(addr_f_escrow);
+   addOrInit(balances, donator, amount);
+   addOrInit(balances, addr_f_escrow, -amount);
+   unlock(addr_f_escrow);
+   unlock(donator);
+   busy(x);
+   return 1;
+}
+
+int main(int argc, string[] argv) {
+    x = int_of_string(argv[1]);
+    int nowTS = 7;
+
+    mutex_init(0);
+    mutex_init(addr_f_escrow);
+    
+    mutex_init(1);
+    mutex_init(2);
+    mutex_init(3);
+    mutex_init(4);
+    
+    balances[1] = 1000;
+    balances[2] = 1000;
+    balances[3] = 1000;
+    balances[4] = 1000;
+    
+    commute_par {
+        { donate(1, 10, nowTS); }
+        { donate(2, 10, nowTS); }
+        { donate(3, 10, nowTS); }
+        { donate(4, 10, nowTS); }
+    }
+    
+    commute_par {
+        { reclaim(1, 10, nowTS); }
+        { reclaim(2, 10, nowTS); }
+        { reclaim(3, 10, nowTS); }
+        { reclaim(4, 10, nowTS); }
+    }
+    return 0;
+}

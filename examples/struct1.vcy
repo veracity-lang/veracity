@@ -1,0 +1,21 @@
+struct Point {
+  int x;
+  int y
+}
+
+void add_point(Point p, Point delta) {
+    p.x = p.x + delta.x;
+    p.y = p.y + delta.y;
+    return;
+}
+
+int main(int argc, string[] argv) {
+    Point p = new Point { x = 5; y = 7 };
+    Point d = new Point { x = 2; y = 8 };
+
+    add_point(p, d);
+
+    print("x = " ^ string_of_int(p.x) ^ "; y = " ^ string_of_int(p.y) ^ ".\n");
+
+    return 0;
+}

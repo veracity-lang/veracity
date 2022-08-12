@@ -1,0 +1,20 @@
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int x = 500;
+    int y = random(0, 100);
+    int c = 420;
+    int t = 500;
+    mutex_init(1);
+
+    commute _  /* 2nd Condition */ {
+        { commute _ /* 1st Condition */ { 
+              { mutex_lock(1); c = c + 1; mutex_unlock(1); } 
+              { /*t=*/ busy_wait(n); mutex_lock(1); if(c>0) { c = c - t; } mutex_unlock(1); }
+          } }
+        { t = x;
+          busy_wait(n); 
+          mutex_lock(1); if(c>t) { x = x - c; } mutex_unlock(1); }
+    }
+
+    return x;
+}

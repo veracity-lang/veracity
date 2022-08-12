@@ -1,0 +1,19 @@
+
+int main(int argc, string[] argv) {
+
+    int x = 10;
+    int y = 4;
+
+    commute_par _ {
+        { if (x % 2 == 0){
+            x = x + y;
+            }
+        }
+        { if(x % 2 == 1){
+            x = x + y;
+            }
+        }
+    } 
+    
+    return x;
+}

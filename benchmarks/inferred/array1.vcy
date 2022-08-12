@@ -1,0 +1,17 @@
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    int y = int_of_string(argv[3]); 
+    int[] r = new int[1];
+    r[0] = x;
+    
+    mutex_init(0);
+    commute _ {
+        { mutex_lock(0); r[0] = r[0] + 1; mutex_unlock(0); busy_wait(n); } 
+        { mutex_lock(0); if(r[0] > 1) { r[0] = y; } mutex_unlock(0);
+          busy_wait(n);
+        }
+    }
+    
+    return 0;
+}

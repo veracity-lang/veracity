@@ -1,0 +1,10 @@
+/* Currently doesn't fail because function bodies aren't checked for purity. */
+
+int z = 5;
+
+int func (int x, int y) =>
+    x + y + z;
+
+int main(int argc, string[] argv) {
+    return func(5, 10);
+}

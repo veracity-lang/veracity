@@ -1,0 +1,12 @@
+int contents = 0;
+
+
+void increase(int n) {
+    contents = contents + n;
+    return;
+}
+
+void read() {
+    contents = contents;
+    return contents;
+}

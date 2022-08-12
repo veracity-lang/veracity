@@ -1,0 +1,58 @@
+/* Bounded ring buffer */
+
+int q0 = 0; int q1 = 0; int q2 = 0; int q3 = 0;
+
+int size = 4;
+int wi = 0;
+int ri = 0;
+int full_slots = 0;
+
+/* Returns whether write succeeded */
+bool write(int data) {
+    if (full_slots == size) {
+        return false;
+    }
+
+    if (wi == 0) {
+        q0 = data;
+    } else if (wi == 1) {
+        q1 = data;
+    } else if (wi == 2) {
+        q2 = data;
+    } else if (wi == 3) {
+        q3 = data;
+    }
+
+    full_slots = full_slots + 1;
+    wi = (wi + 1) % size;
+
+    return true;
+}
+
+int read() {
+    if (full_slots == 0) {
+        return -1;
+    }
+
+    int data = 0;
+
+    if (ri == 0) {
+        data = q0;
+    } else if (ri == 1) {
+        data = q1;
+    } else if (ri == 2) {
+        data = q2;
+    } else if (ri == 3) {
+        data = q3;
+    }
+
+    full_slots = full_slots - 1;
+    ri = (ri + 1) % size;
+
+    return data;
+}
+
+
+int main(int argc, string[] argv) {
+    return 0;
+}

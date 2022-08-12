@@ -1,0 +1,26 @@
+int main(int argc, string[] argv) {
+	hashtable[int,int] tbl = new hashtable[int,int];
+	int n = int_of_string(argv[1]);
+	int x = int_of_string(argv[2]);
+	int y = int_of_string(argv[3]);
+	int z = int_of_string(argv[4]);
+	int a = int_of_string(argv[5]);
+	int v = int_of_string(argv[6]);
+	int g = int_of_string(argv[7]);
+	
+	tbl[z] = 3;
+	mutex_init(0); 
+	commute _ {
+		{ busy_wait(n); mutex_lock(0); 
+		  v = ht_get(tbl, z);
+		  v = v + 3;
+		  g = x + a;
+		  ht_put(tbl, g, v); mutex_unlock(0); }
+		{ mutex_lock(0); v = ht_get(tbl, z);
+		  v = v * 2;
+		  ht_put(tbl, y, v); mutex_unlock(0); 
+		  busy_wait(n); }
+	}
+
+	return 0;
+}

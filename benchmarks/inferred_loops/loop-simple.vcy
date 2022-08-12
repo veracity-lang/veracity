@@ -1,0 +1,34 @@
+int main(int argc, string[] argv) {
+    int y = int_of_string(argv[1]);
+    int z = int_of_string(argv[2]);
+    int x = 0;
+    
+    havoc x;
+    havoc y;
+    havoc z;
+    int x_preM = 0; int x_preN = 0;
+    int y_preM = 0; int y_preN = 0;
+    int z_preM = 0; int z_preN = 0;
+    mutex_init(0); 
+    commute _ {
+        {
+            x_preM = x;
+            mutex_lock(0); while(y>0) { x = x + 1; y = y - 1; } mutex_unlock(0); 
+            /* LOOP SUMMARY */
+            havoc x; assume(x == x_preM + y_preM);
+            havoc y; assume(y == 0);
+            /* END SUMMARY */
+            x_preM = 0;
+        }
+        {
+            x_preN = x;
+            mutex_lock(0); while(z>0) { x = x + 1; z = z - 1; } mutex_unlock(0); 
+            /* LOOP SUMMARY */
+            havoc x; assume(x == z_preN + x_preN);
+            havoc z; assume(z == 0);
+            /* END SUMMARY */
+            x_preN = 0;
+        }
+    }
+    return 0;
+}

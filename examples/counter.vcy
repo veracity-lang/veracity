@@ -1,0 +1,23 @@
+int contents = 0;
+
+void increment() {
+    contents = contents + 1;
+    return;
+}
+
+void decrement() {
+    if (contents < 1) {
+        return;
+    }
+    contents = contents - 1;
+    return;
+}
+
+void reset() {
+    contents = 0;
+    return;
+}
+
+bool zero() {
+    return contents == 0;
+}

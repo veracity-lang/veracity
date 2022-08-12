@@ -1,0 +1,9 @@
+/* Use struct-based unbounded stack as an example of manual conditions */
+
+
+void pop_push(int pop_data, int push_data) {
+    commute_par (pop_data == push_data && size > 0) {
+        { /* TODO push */ }
+        { /* TODO pop */ }
+    }
+}

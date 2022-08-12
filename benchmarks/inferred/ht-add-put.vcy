@@ -1,0 +1,21 @@
+int main(int argc, string[] argv) {
+	hashtable[int,int] tbl = new hashtable_seq[int,int];
+	int n = int_of_string(argv[1]);
+	int y = int_of_string(argv[2]);
+	int z = int_of_string(argv[3]);
+	int u = int_of_string(argv[4]);
+	
+	tbl[z] = u + 1;
+	mutex_init(0); 
+	commute _ {
+		{ 	busy_wait(n);
+			mutex_lock(0); y = u + 1;
+		  	ht_put(tbl, y, u); mutex_unlock(0); 
+		}
+		{ 	mutex_lock(0); y = ht_get(tbl, z); mutex_unlock(0);
+		 	busy_wait(n);
+		}
+	}
+	
+	return 0;
+}

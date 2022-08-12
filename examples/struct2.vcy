@@ -1,0 +1,71 @@
+struct Person {
+	Person parent1;
+	Person parent2;
+	int age;
+	string name
+}
+
+Person adam = new Person {
+	name = "Adam"; 
+	age = 25;
+	parent1 = Person null;
+	parent2 = Person null
+};
+
+Person eve = new Person {
+	name = "Eve";
+	age = 25;
+	parent1 = Person null;
+	parent2 = Person null
+};
+
+Person haveChild(Person p1, Person p2, string name) {
+	return new Person { 
+		age = 0; 
+		parent1 = p1; 
+		parent2 = p2; 
+		name = name 
+	};
+}
+
+void yearsGoBy(Person[] ps, int years) {
+	for (int i = 0; i < length_of_array(ps); i = i + 1;) {
+		if (ps[i] != Person null) {
+			int age = ps[i].age;
+			ps[i].age = age + years;
+		}
+	}
+	return;
+}
+
+string string_of_person (Person p) {
+	if (p == Person null) {
+		return "null";
+	}
+
+	return
+		"Name is " ^ p.name ^ 
+		", age is " ^ string_of_int(p.age) ^ 
+		", parents are " ^ ((p.parent1 == Person null) ? "nobody" : p.parent1.name) ^
+		" and " ^ ((p.parent2 == Person null) ? "nobody" : p.parent2.name);
+}
+
+int main(int argc, string[] argv) {
+	Person[] people = new Person[3];
+	people[0] = haveChild(adam, eve, "Dingus");
+	people[1] = haveChild(adam, eve, "Bringus");
+
+	yearsGoBy(people, 20);
+
+	people[2] = haveChild(people[0], people[1], "Monocle");
+
+	yearsGoBy(people, 10);
+
+	people[1].name = "New name!";
+
+	for (int i = 0; i < length_of_array(people); i = i + 1;) {
+		print(string_of_person(people[i]) ^ "\n");
+	}
+	
+	return 0;
+}

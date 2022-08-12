@@ -1,0 +1,12 @@
+int fact(int x) {
+    if (x < 2) {
+        return 1;
+    } else {
+        int r = fact(x - 1);
+        return (r * x);
+    }
+}
+
+int main(int argc, string[] argv) {
+    return fact(int_of_string(argv[1]));
+}

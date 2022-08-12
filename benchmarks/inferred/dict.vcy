@@ -1,0 +1,19 @@
+int main(int argc, string[] argv) {
+	int n = int_of_string(argv[1]);
+	int t = random(0, 100);
+        int c = 69;
+	int r = random(0, 100);
+	int y = 42 + 69;
+	int x = 42;
+	int i = r + 1;
+	hashtable[int, int] stats = new hashtable[int, int];
+	stats[r] = 0;
+	stats[i] = 0;
+
+	commute _ {
+		{ busy_wait(n); t = c + x; ht_put(stats,r,t); }
+		{ ht_put(stats,i,y); y = y + x; busy_wait(n); } 
+	}
+
+	return x;
+}

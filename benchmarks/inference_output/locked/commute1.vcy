@@ -1,0 +1,22 @@
+int main(int argc, string[] argv) {
+    int a = 0;
+    int b = 0;
+    int c = 0;
+    int d = 0;
+    int n = int_of_string(argv[1]);
+    int[] arr = new int[10];
+    
+    int e = c % n;
+    if ((a == b && e != d)) {
+      int a0 = a;
+      commute (a == b && e != d) {
+        { busy_wait(n); a = a + 1; arr[e] = b; a = a - 1; }
+        { arr[d] = a0; busy_wait(n); }
+      }
+    } else {
+        busy_wait(n); a = a + 1; arr[e] = b; a = a - 1;
+        arr[d] = a; busy_wait(n);
+    } 
+   
+    return 0;
+}

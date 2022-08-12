@@ -1,0 +1,30 @@
+int main(int argc, string[] argv) {
+    hashtable[string,int] tbl = new hashtable_seq[string,int];
+    tbl["a"] = 5;
+
+    print("LEN " ^ string_of_int(ht_size(tbl)) ^ "\n");
+    tbl["b"] = 7;
+    tbl["c"] = 8;
+    print("LEN " ^ string_of_int(ht_size(tbl)) ^ "\n");
+
+    print(string_of_int(tbl["a"]) ^ "\n");
+    print(string_of_int(tbl["b"]) ^ "\n");
+    print(string_of_int(tbl["c"]) ^ "\n");
+
+    tbl["c"] = 10;
+
+    print("LEN " ^ string_of_int(ht_size(tbl)) ^ "\n");
+    print(string_of_int(tbl["c"]) ^ "\n");
+
+    tbl["b"] = int null;
+
+    print("LEN " ^ string_of_int(ht_size(tbl)) ^ "\n");
+
+    if (tbl["d"] == int null) {
+        print("tbl[d] is null.\n");
+    } else {
+        print(string_of_int(tbl["d"]) ^ "\n");
+    }
+
+    return 0;
+}

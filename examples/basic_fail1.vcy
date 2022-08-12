@@ -1,0 +1,11 @@
+/* Should fail */
+
+int fx(int x, int y) {
+    int z = 2;
+    return (x + y) * 2;
+}
+
+int main(int argc, string[] argv) {
+    int q = fx(1, 2);
+    return z;
+}

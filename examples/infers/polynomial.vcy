@@ -1,0 +1,14 @@
+int main(int argc, string[] argv) {
+    int x = random(0, 100);
+    int y = random(0, 100);
+    int b = 0;
+    commute_par _ {
+        /* if x is negative this will reduce y */
+        { y = y + x*x*x + 3*x; } 
+
+        /* this is senstie to whether y went below 0 */
+        { if (y < 0) { b = 2; } else { b = 3; } }
+    }
+
+    return x;
+}

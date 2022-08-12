@@ -1,0 +1,211 @@
+/* https://developer.algorand.org/solutions/example-crowdfunding-stateful-smart-contract-application/ */
+
+
+/*** Globals ***/
+int f_start_date;
+int f_end_date;
+int f_goal;
+int f_amount;
+int addr_f_escrow;
+int addr_f_creator;
+int addr_f_receiver;
+int addr_f_CloseRemainderTo;
+int f_close_date
+
+int addr_noone = -1;
+
+// How much an actor has given
+hashtable[int,int] given = new hashtable[int,int];
+hashtable[int,int] balances = new hashtable[int,int];
+
+/*** 1 ***/
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int s1 = 0;
+    int s2 = 0;
+    commute_par _ {
+        {
+            // call to create()
+            int addr_cre, int startDate, int endDate, int goal, int addr_rec, int closeDate;
+            f_start_date = startDate;
+            f_end_date = endDate;
+            f_goal = goal;
+            f_receiver = rec;
+            f_creator = cre; // implicit in Algorand
+            f_amount = 0;
+            f_close_date = closeDate;
+            f_CloseRemainderTo = noone;
+            ht_put balances escrow 0;
+            s1 = 1;
+        }
+        {   // call to update()
+            int addr_cre, int fid, int addr_esc;
+            if (cre != active_funds[fid].f_creator) { s2 = 0; }
+            else { 
+                if (esc < 1000 /* valid range */) { s2 = 0; }
+                else {  f_escrow = esc; }
+            }
+        }
+    };
+    // Two claim() calls
+    commute_par _ {
+        {  // Claim
+            int addr_who, int addr_sender, int addr_receiver, int fid, int amount;
+            int nowTS;
+            if (sender   != active_funds[fid].f_escrow) return 0;
+            if (receiver != active_funds[fid].f_receiver) return 0;
+            if (receiver != active_funds[fid].f_CloseRemainderTo) return 0;
+            if (active_funds[fid].f_close_date > nowTS) return 0;
+            if (active_funds[fid].f_goal > active_funds[fid].f_amount) return 0;
+            if (! ht_mem balances sender) return 0;
+            // transfer
+            if (ht_mem balances receiver) {
+                ht_put balances receiver ((get_get balances receiver) + active_funds[fid].f_amount)
+            } else {
+                ht_put balances receiver active_funds[fid].f_amount;
+            }
+            // escrow account must exist
+            ht_put balances sender ((get_get balances sender) - active_funds[fid].f_amount)
+            return 1;
+}
+        }
+    }
+}
+
+
+
+
+
+
+void create(int addr_cre, int startDate, int endDate, int goal, int addr_rec, int closeDate) {
+    top_fund = top_fund + 1;
+    int my_id = top_fund;
+    active_funds[my_id].f_start_date = startDate;
+    active_funds[my_id].f_end_date = endDate;
+    active_funds[my_id].f_goal = goal;
+    active_funds[my_id].f_receiver = rec;
+    active_funds[my_id].f_creator = cre; // implicit in Algorand
+    active_funds[my_id].f_amount = 0;
+    active_funds[my_id].f_close_date = closeDate;
+    active_funds[my_id].f_CloseRemainderTo = noone;
+    ht_put balances escrow 0;
+    return 1;
+}
+
+/*** 1a ***/
+/* The smart contracts global state is modified to add the escrow 
+   account during the update operation. The contract performs the
+   following additional operations.
+   * Verifies that the creator of the stateful smart contract is making the update call.
+   * Verifies that one parameter is passed in, which should be the escrow address.
+   * Stores the address in the application’s global state. */
+int update(int addr_cre, int fid, int addr_esc) {
+    if (cre != active_funds[fid].f_creator) return 0;
+    if (esc < 1000 /* valid range */) return 0;
+    active_funds[fid].f_escrow = esc;
+    return 1;
+}
+
+/*** 2: Opt-in and donate ***/
+/* In the crowdfunding application, every transaction type is checked in the
+  code to verify proper calls. The developer documentation explains the
+  different transaction types. The opt-in call happens to be the last one
+  checked in this example. The code performs the following:
+  * Verifies application arguments have been passed.
+  * If no arguments, assumes an account is just opting into the application.
+  * Checks the transaction type to verify it is opt-in.
+  * If an account donates and opts into the application in one call, this
+    code will skip directly to the check_parms label and the parameters will be processed.
+*/
+// Omitted because it is trivial: int optin(int addr_who, int args) { }
+// int check_parms(int choice, int fid, int amount) {}
+
+
+/*** Donate ***/
+/* Ensures the donation is within the beginning and ending dates of the fund.
+    Verifies that this is a grouped transaction with the second one being a payment to the escrow.
+    Increments and stores the global total amount.
+    Stores the given amount in the local storage of the giver. */
+int donate(int addr_who, int fid, int amount) {
+    int nowTS; // modeling timestamp
+    if (nowTS <= active_funds[fid].f_start_date) return 0;
+    if (nowTS >= active_funds[fid].f_end_date) return 0;
+    active_funds[fid].f_amount = active_funds[fid].f_amount + amount;
+    if (ht_mem given actor) { htget given actor (htset given actor amount + 1); }
+    else { htset given actor amount; }
+    return 1;
+}
+
+/*** Claim ***/
+/* The stateful smart contract processes this transaction by performing several checks.
+There are two transactions in the group.
+The sender in the payment transaction is the escrow account.
+The receiver of the payment transaction is the receiver that was set when the fund was created.
+The payment transaction uses CloseRemainderTo to close out the escrow.
+The fund end date has passed.
+The fund goal was met. */
+int claim(int addr_who, int addr_sender, int addr_receiver, int fid, int amount) {
+   int nowTS;
+   if (sender   != active_funds[fid].f_escrow) return 0;
+   if (receiver != active_funds[fid].f_receiver) return 0;
+   if (receiver != active_funds[fid].f_CloseRemainderTo) return 0;
+   if (active_funds[fid].f_close_date > nowTS) return 0;
+   if (active_funds[fid].f_goal > active_funds[fid].f_amount) return 0;
+   if (! ht_mem balances sender) return 0;
+   // transfer
+   if (ht_mem balances receiver) {
+       ht_put balances receiver ((get_get balances receiver) + active_funds[fid].f_amount)
+   } else {
+       ht_put balances receiver active_funds[fid].f_amount;
+   }
+   // escrow account must exist
+   ht_put balances sender ((get_get balances sender) - active_funds[fid].f_amount)
+   return 1;
+}
+
+
+/*** Reclaim ***/
+/* The stateful smart contract processes this transaction by performing
+ several checks and writes. This is a more complex operation as the giver
+ does not have to recover their total amount and in fact, may decide to
+ never recover their donations. Step 5 handles this situation. Also, if
+ this is the last giver to recover their donations, the payment transaction
+ must use the CloseRemainderTo attribute to close out the escrow. 
+
+ This part of the smart contract checks for the following conditions.
+. There are two transactions in the group.
+. The smart contract caller is the payment transaction receiver.
+. The sender of the payment transaction is the escrow
+. The end date for the fund has passed
+. The fund goal was missed.
+. Add the payment transaction amount with the payment transaction fee and
+    verify that it is equal to or less than the original given amount.
+Check to see if this is the last donation to recover. If so,
+   verify CloseRemainderTo is set, which will close out the escrow. */
+int reclaim(int addr_who, int addr_sender, int addr_receiver, int fid, int amount) {
+   int nowTS;
+   if (who      != receiveer) return 0;
+   if (sender   != active_funds[fid].f_escrow) return 0;
+   if (active_funds[fid].f_close_date > nowTS) return 0;
+   if (active_funds[fid].f_goal < active_funds[fid].f_amount) return 0;
+
+   int fee;
+   int t = amount + fee;
+   if (t > ht_get given receiver) return 0;
+   
+   
+   if (receiver != active_funds[fid].f_CloseRemainderTo) return 0;
+
+   if (receiver != active_funds[fid].f_receiver) return 0;
+   if (receiver != active_funds[fid].f_CloseRemainderTo) return 0;
+   if (! ht_mem balances sender) return 0;
+   // transfer
+   if (ht_mem balances receiver) {
+       ht_put balances receiver ((get_get balances receiver) + active_funds[fid].f_amount)
+   } else {
+       ht_put balances receiver active_funds[fid].f_amount;
+   }
+   // escrow account must exist
+   ht_put balances sender ((get_get balances sender) - active_funds[fid].f_amount)
+   return 1;
+}

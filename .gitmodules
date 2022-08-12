@@ -1,0 +1,9 @@
+[submodule "src/libhtable/libcuckoo"]
+	path = src/libhtable/libcuckoo
+	url = https://github.com/efficient/libcuckoo.git
+	ignore = dirty
+
+[submodule "src/servois2"]
+	path = src/servois2
+	url = https://github.com/veracity-lang/servois2.git
+	ignore = dirty

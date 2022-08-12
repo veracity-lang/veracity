@@ -1,0 +1,6 @@
+int func (int x, int y) =>
+    x + y;
+
+int main(int argc, string[] argv) {
+    return func(5, 10);
+}

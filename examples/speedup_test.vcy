@@ -1,0 +1,14 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    commute_par {
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+        { busy_wait(x); }
+    }
+    return 0;
+}

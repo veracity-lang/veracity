@@ -1,0 +1,17 @@
+int main(int argc, string[] argv) {
+    in_channel fin = open_read("test1.txt");
+    out_channel fout = open_write("test2.txt");
+
+    while (has_line(fin)) {
+        string s = read_line(fin);
+        int x = int_of_string(s);
+        x = x * 2;
+        s = string_of_int(x);
+        write(fout, s ^ "\n");
+    }
+
+    close(fin);
+    close(fout);
+
+    return 0;
+}

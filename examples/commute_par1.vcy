@@ -1,0 +1,20 @@
+void some_long_computation(int p) {
+    int i = 1048576;
+    while (i > 0) {
+        i = i - 1;
+    }
+    print(string_of_int(p) ^ "\n");
+    return;
+}
+
+int main(int argc, string[] argv) {
+    commute_par (argc > 1) {
+        { some_long_computation(1); }
+        { some_long_computation(2); }
+        { some_long_computation(3); }
+        { some_long_computation(4); }
+        { some_long_computation(5); }
+        { some_long_computation(6); }
+    }
+    return 0;
+}

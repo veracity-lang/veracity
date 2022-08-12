@@ -1,0 +1,41 @@
+
+global dir = new hashtable[string, hashtable[string, string]];
+
+
+/*  */
+bool phi_new_file(string subdir1, string filename1, string content1, string subdir2, string filename2, string content2) {
+    return !(subdir1 == subdir2) || !(filename1 == filename2)
+    /* This is technically correct, but computationally expensive: | content1 == content2 */;
+}
+
+
+void new_file(string subdir, string filename, string content) {
+    /* We should ideally make a file handle or something,
+       but for now we'll just play make-believe with storing the string.
+     */
+     
+    /* TODO: Maybe force this operation in a mkdir or something */
+    if(dir[subdir] == hashtable[string, string] null) { dir[subdir] = new hashtable[string, string]; }
+    dir[subdir][filename] = content;
+}
+
+
+
+int main(int argc, string[] argv) {
+    var f1_name = "bar";
+    var f2_name = "baz";
+    
+    var content1 = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
+    var content2 = "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+    
+    commute_par 
+    /* This doesn't quite work yet because we don't have a way to mark a method as pure, so I'll inline it: 
+       (phi_new_file("foo", f1_name, content1, "foo", f2_name, content2)) */
+       (!("foo" == "foo") || !(f1_name == f2_name)) {
+        {new_file("foo", f1_name, content1);}
+        {new_file("foo", f2_name, content2);}
+    }
+    
+    
+    return length_of_string(dir["foo"][f1_name]);
+}

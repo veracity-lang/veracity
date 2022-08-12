@@ -1,0 +1,12 @@
+/* Expected output is 13 */
+
+int fx(int x, int y) {
+    int z = 2;
+    return (x + y) * 2;
+}
+
+int main(int argc, string[] argv) {
+    int z = 7;
+    int q = fx(1, 2);
+    return z + q;
+}

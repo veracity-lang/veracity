@@ -1,0 +1,24 @@
+int main(int argc, string[] argv) {
+    int size = int_of_string(argv[1]);
+    int x = 0;
+    int y = int_of_string(argv[2]);
+    int z = 0;
+    int a = int_of_string(argv[3]);
+    int c = int_of_string(argv[4]);
+    mutex_init(0); 
+    commute _ {
+        { 
+            busy_wait(size);
+            x = /* calc1 */ (a);
+            mutex_lock(0); c = c + (x*x); mutex_unlock(0); 
+        } 
+        { 
+            mutex_lock(0); if (c>0 && y<0)
+              { c = c - 1; mutex_unlock(0); busy_wait(size); z = /* calc2 */ (y); }
+            else
+              { mutex_unlock(0); busy_wait(size); z = /* calc3 */ (y); }
+        }
+    }
+
+    return x;
+}

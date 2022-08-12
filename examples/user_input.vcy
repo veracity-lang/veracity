@@ -1,0 +1,8 @@
+
+int main(int argc, string[] argv) {
+    int x = 5;
+    x = x + int_of_string(read_stdin());
+    x = x + int_of_string(read_stdin());
+    x = x + int_of_string(read_stdin());
+    return x;
+}

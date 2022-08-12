@@ -1,0 +1,6 @@
+(ocamllex vcy_lexer)
+
+(menhir
+ (modules vcy_parser)
+)
+
