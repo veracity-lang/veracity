@@ -22,16 +22,12 @@ eval $(opam env)
 
 # Usage
 
-Build with `make` in `veracity/src/`
+Build with `make` in `src/`
 
-Clean with `make clean` in `veracity/src/`
+Clean with `make clean` in `src/`
 
-Execute Veracity with `veracity/src/vcy.exe`. This will display the available commands.
+Execute Veracity with `src/vcy.exe`. This will display the available commands.
 
 Example of execution:
 
-    veracity/src/vcy.exe interp bench/manuals/dihedral.vcy 10 5 0 2 1
-
-# Notes
-
-The `libcuckoo` hashtable has been omitted from this codebase. Veracity programs which use the `libcuckoo` hashtable variant will default to the naïvely concurrent OCaml variant.
+    src/vcy.exe interp benchmarks/manual/dihedral.vcy 10 5 0 2 1
