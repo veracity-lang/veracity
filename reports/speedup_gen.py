@@ -63,7 +63,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/inference_output/array2.vcy", lambda n : [str(n), str(1)]),
     ("benchmarks/inference_output/basic-matrix.vcy", lambda n : [str(n), str(1), str(0), str(3)]),
     #("benchmarks/inference_output/commute1.vcy", lambda n : [str(n)]),
-    ("benchmarks/inference_output/locked/commute1.vcy", lambda n : [str(n)]),
+    ("benchmarks/inference_output/locked/array3.vcy", lambda n : [str(n)]),
     ("benchmarks/inference_output/conditional.vcy", lambda n : [str(n)]),
     ("benchmarks/inference_output/counter.vcy", lambda n : [str(n)]),
     ("benchmarks/inference_output/counter-busywait.vcy", lambda n : [str(n)]),
