@@ -46,18 +46,18 @@ string string_of_person (Person p) {
 	return
 		"Name is " ^ p.name ^ 
 		", age is " ^ string_of_int(p.age) ^ 
-		", parents are " ^ ((p.parent1 == Person null) ? "nobody" : p.parent1.name) ^
-		" and " ^ ((p.parent2 == Person null) ? "nobody" : p.parent2.name);
+		", parents are " ^ ((p.parent1 == Person null) ? "?" : p.parent1.name) ^
+		" and " ^ ((p.parent2 == Person null) ? "?" : p.parent2.name);
 }
 
 int main(int argc, string[] argv) {
 	Person[] people = new Person[3];
-	people[0] = haveChild(adam, eve, "Dingus");
-	people[1] = haveChild(adam, eve, "Bringus");
+	people[0] = haveChild(adam, eve, "Foo");
+	people[1] = haveChild(adam, eve, "Bar");
 
 	yearsGoBy(people, 20);
 
-	people[2] = haveChild(people[0], people[1], "Monocle");
+	people[2] = haveChild(people[0], people[1], "Baz");
 
 	yearsGoBy(people, 10);
 

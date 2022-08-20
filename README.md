@@ -1,3 +1,13 @@
+# Directories
+
+`benchmarks` contains the test case programs used in the official Veracity paper.
+
+`examples` contains additional test programs of general Veracity functionality. Many of these programs include features impleemnted in the Veracity interpreter, but not yet a part of our inference/verification logic.
+
+`reports` contains utilities for generating tables of results from running test cases.
+
+`src` contains the implementation of Veracity, and is the build directory and location of the `vcy.exe` executable.
+
 # Preparation
 
 These instructions assume the user is working with a fresh install of `Ubuntu 20.04`.
