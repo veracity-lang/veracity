@@ -457,7 +457,7 @@ module RunInfer : Runner = struct
     let prog = Driver.parse_oat_file prog_name in
     let env = Interp.initialize_env prog true in
     let open Ast in
-    if !output_file != "" then begin
+    if not (String.equal !output_file "") then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
       let prog' = gmdecls @ List.filter (function Gvdecl _ | Gsdecl _ -> true | Gmdecl _ -> false) prog in
       let translated_prog = Ast_print.AstPP.string_of_prog prog' in
