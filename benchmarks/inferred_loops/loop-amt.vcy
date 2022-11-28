@@ -17,7 +17,7 @@ int main(int argc, string[] argv) {
                 } else {
                     amt = amt * i * -1;
                 }
-                i = i - 1;
+                i = i - 2;
             }
             /* need a strong enough loop invariarnt to show that amt>0 here */
             /* LOOP SUMMARY */
