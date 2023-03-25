@@ -1,0 +1,34 @@
+
+int main(int argc, string[] argv) {
+
+    int[] balances = new int[10];
+    int[] allowed = new int[100];
+    int allowed_size = 10;
+
+    int from = int_of_string(argv[1]);
+    int to = int_of_string(argv[2]);
+    int value = int_of_string(argv[3]);
+    int spender = int_of_string(argv[4]);
+    int i = 0;
+    int msg_sender = int_of_string(argv[5]);
+
+	commute _ {
+        {
+            /* transferFrom */
+            i = allowed_size * from + msg_sender;
+            assume (to != 0);
+            assume (value <= balances[from]);
+            assume (value <= allowed[i]);
+            balances[from] = balances[from] - value;
+            balances[to] = balances[to] + (value);
+            i = allowed_size * from + msg_sender;
+            allowed[i] = allowed[i] - (value);
+        }
+        {
+            /* approve */ 
+            i = allowed_size * msg_sender + spender;
+            allowed[i] = value;
+        }
+    }
+	return 0;
+}
