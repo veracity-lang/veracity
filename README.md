@@ -16,7 +16,7 @@ opam switch create 4.12.0mc 4.12.0+domains+effects --repositories=multicore=git+
 opam switch 4.12.0mc
 eval $(opam env)
 
-opam install sexplib ppxlib.0.22.0+effect-syntax ppx_deriving_yaml
+opam install sexplib ppxlib.0.22.0+effect-syntax ppx_deriving_yaml ounit2 menhir
 eval $(opam env)
 ```
 
