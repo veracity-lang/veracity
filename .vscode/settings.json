@@ -1,6 +1,8 @@
 {
     "files.associations": {
+        "*.smtlib2": "smt-lib",
         "*.vcy": "c",
-        "random": "c"
+        "random": "c",
+        "fetchandadd": "c"
     }
 }
