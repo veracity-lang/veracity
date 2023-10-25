@@ -138,6 +138,7 @@ and stmt =
 | Assert of exp node
 | Assume of exp node
 | Havoc of id
+| Require of exp node
 
 and tyval = ty * (value ref)
 
