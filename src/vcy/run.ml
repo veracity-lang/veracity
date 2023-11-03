@@ -418,6 +418,10 @@ module RunInfer : Runner = struct
   let prover_name = ref ""
   let output_file = ref ""
   let timeout = ref None
+  let lattice = ref false
+  let lattice_timeout = ref (Some 30.)
+  let stronger_pred_first = ref false
+  let no_cache = ref true
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -426,6 +430,18 @@ module RunInfer : Runner = struct
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
     (* ; "--poke", Arg.Unit (fun () -> Choose.choose := Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
+    ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
+    ; "--poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke2), " Use improved poke heuristic (default: simple)"
+    ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"    
+    ; "--mcpeak-max", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max), " Use model counting based synthesis with strategy: maximum-coverage"
+    ; "--mcpeak-max-poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max_poke), " Use model counting based synthesis with strategy: maximum-coverage, then poke2"
+    ; "--lattice-timeout", Arg.Float (fun f -> lattice_timeout := Some f), " Set the time limit for lattice construction"
+    ; "--stronger-pred-first", Arg.Unit (fun () -> stronger_pred_first := true), " Choose stronger predicates first"
+    ; "--lattice", Arg.Unit (fun () -> lattice := true), " Create and use lattice of predicate implication"
+    ; "--timeout", Arg.Float (fun f -> timeout := Some f), " Set time limit for execution"
+    ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
+    ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice" 
+    
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
@@ -472,7 +488,11 @@ module RunInfer : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover (); timeout = !timeout
+      Servois2.Synth.default_synth_options with prover = get_prover (); timeout = !timeout; 
+                                        lattice = !lattice;
+                                        lattice_timeout = !lattice_timeout;
+                                         no_cache = !no_cache;
+                                         stronger_predicates_first = !stronger_pred_first;
     } in
     Util.servois2_synth_option := synth_options;
     match anons with

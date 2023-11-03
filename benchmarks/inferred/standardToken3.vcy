@@ -1,0 +1,26 @@
+
+int main(int argc, string[] argv) {
+
+    int[] allowed = new int[100];
+    int allowed_size = 10;
+
+    int owner = int_of_string(argv[1]);
+    int spender = int_of_string(argv[2]);
+    int msg_sender = int_of_string(argv[3]);
+    int value = int_of_string(argv[4]);
+    int i = 0;
+
+	commute _ {
+        {
+            /* allowance */ 
+            i = allowed_size * owner + spender;
+            return allowed[i];
+        }
+        {
+            /* approve */ 
+            i = allowed_size * msg_sender + spender;
+            allowed[i] = value;
+        }
+    }
+	return 0;
+}

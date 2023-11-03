@@ -663,7 +663,7 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
   let h,t = List.hd body.elt, node_app List.tl body in
   match h.elt with
   | Assn _ | Ret _ | SCall _ | SCallRaw _
-  | Raise _ | Assert _ | Assume _  | Havoc _ -> 
+  | Raise _ | Assert _ | Assume _  | Havoc _ | Require _ -> 
     node_app
     (List.cons h)
     (infer_phis_of_block g defs t)
@@ -920,6 +920,8 @@ let cook_calls (g : global_env) : global_env =
       Assume (cook_calls_of_exp e)
     | Havoc id ->
       Havoc id
+    | Require e ->
+      Require (cook_calls_of_exp e)
     in
     node_up s s'
 

@@ -1,0 +1,78 @@
+
+int main(int argc, string[] argv) {
+
+    int[] bids = new int[100];
+
+    int msg_sender = int_of_string(argv[1]);
+    int highestBindingBid = int_of_string(argv[2]);
+    int highestBidder = int_of_string(argv[3]);
+    int msg_value = int_of_string(argv[4]);
+    int minimumBidValue = int_of_string(argv[5]);
+    int bidIncrement = int_of_string(argv[6]);
+
+    int bidIncrementWei_arg = int_of_string(argv[7]);
+    int minimumBidValue_arg = int_of_string(argv[8]);
+    int startBlock = int_of_string(argv[9]);
+    int endBlock = int_of_string(argv[10]);
+    string ipfsHash = int_of_string(argv[11]);
+    int block_number = int_of_string(argv[12]);
+    int blocksGenerated = int_of_string(argv[13]);
+
+    int auctionState = 0;
+    int state_started = 1;
+    int state_running = 2;
+    int state_ended = 3;
+    int state_canceled = 4;
+
+    int currentBid = 0;
+    int a = 0;
+    int b = 0;
+    int c = 0;
+
+
+	commute _ {
+        {
+            /* startNewBid */
+            assume (auctionState == state_started);
+            startBlock = block_number;
+            endBlock = startBlock + blocksGenerated;
+            auctionState = state_running;
+            ipfsHash = "";
+            bidIncrement = bidIncrementWei_arg;
+            minimumBidValue = minimumBidValue_arg;
+        }
+        {
+            /* placeBid */
+            assume(auctionState == state_running);
+            assume(msg_value >= minimumBidValue);
+            currentBid = bids[msg_sender] + msg_value;
+            assume(currentBid >= highestBindingBid);
+            bids[msg_sender] = currentBid;
+            b = bids[highestBidder];
+            if(currentBid <= b){
+                a = currentBid + bidIncrement;
+                if(a <= b){
+                    highestBindingBid = a;
+                }
+                else{
+                    highestBindingBid = b;
+                }
+                return 0;
+            }
+            
+            if(currentBid > b){ 
+                c = bids[highestBidder];
+                c = c + bidIncrement;
+                if(currentBid <= c){
+                    highestBindingBid = currentBid;
+                }
+                else{
+                    highestBindingBid = c;
+                }
+                highestBidder = msg_sender;
+            }
+            
+        }
+    }
+	return 0;
+}

@@ -39,7 +39,7 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
     else if String.sub s (len - 5) 5 = "_size"
     then Call(MethodL("ht_size", List.assoc "ht_size" Vcylib.lib_hashtable), [no_loc @@ Id(String.sub s 0 (len - 5))])
     else if String.sub s (len - 5) 5 = "_keys"
-    then raise @@ NotImplemented "_keys translation back from smt"
+    then Id(String.sub s 0 (len - 5))
     else Id s
   | EArg i -> failwith "Not Implemented"
   | EConst c -> 
@@ -92,11 +92,23 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
         end
       | _ -> raise @@ NotImplemented "Can't currently handle complicated things; requires recursive expression typechecking"
       end
+    | "insert", [e1; e2] | "set.insert", [e1; e2] -> 
+      let elem = exp_node e1 in 
+        begin match e2 with
+        | EVar (Var id) ->
+          let id, t = assoc_servois_ty id embedding in
+          begin match t with
+          | THashTable _ ->
+            CallRaw ("ht_put", [no_loc @@ Id id; elem])
+          | _ -> raise @@ Failure "Bad variable type for 'insert'"
+          end
+        | _ -> raise @@ NotImplemented "Can't currently handle complicated things; requires recursive expression typechecking"
+        end
     | _ -> failwith @@ "Function "^s^" not recognized or supported or improper arguments applied"
     end
   | EExists(binding, exp) -> raise @@ Failure "Cannot translate existential quantifier back from smt"
 
-let exp_of_phi (phi : Servois2.Phi.t) (embedding: embedding_map) : exp =
+let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
   
 let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list) (vars : ty bindlist) =
@@ -105,7 +117,9 @@ let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list
   in
   Servois2.Choose.choose := Servois2.Choose.poke2;
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
-  exp_of_phi phi embedding
+    Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
+    exp_of_phi phi embedding
+  (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
 
 let verify_of_block e genv _ blks vars : bool option * bool option =
   let embedding = generate_embedding_map vars in

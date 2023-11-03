@@ -1,0 +1,35 @@
+
+int main(int argc, string[] argv) {
+
+    int[] balances = new int[10];
+    int[] allowed = new int[100];
+    int allowed_size = 10;
+
+    int addedValue = int_of_string(argv[1]);
+    int subtractedValue = int_of_string(argv[2]);
+    int value = int_of_string(argv[3]);
+    int spender = int_of_string(argv[4]);
+    int i = 0;
+    int msg_sender = int_of_string(argv[5]);
+    int oldValue = 0;
+
+	commute _ {
+        {
+            /* increaseApproval */
+            i = allowed_size * msg_sender + spender;
+            allowed[i] = allowed[i] + addedValue;
+        }
+        {
+            /* decreaseApproval */ 
+            i = allowed_size * msg_sender + spender;
+            oldValue = allowed[i];
+            if(subtractedValue > oldValue){
+                allowed[i] = 0;
+            }
+            else{
+                allowed[i] = oldValue - subtractedValue;
+            }
+        }
+    }
+	return 0;
+}
