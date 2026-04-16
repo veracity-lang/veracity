@@ -1,0 +1,12 @@
+int main(int argc, string[] argv) {
+	int c = int_of_string(argv[1]);
+
+    /* Inc should move to the LEFT of Dec , but not a LEFT mover */
+	commute_left _ {
+		/*Inc:*/ { c = c + 1; }
+		/*Dec:*/ { if (c > 0) { c = c - 1; } }
+	}
+
+	print(string_of_int(c) ^ "\n");
+	return 0;
+}

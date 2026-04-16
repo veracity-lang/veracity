@@ -40,6 +40,11 @@
   ("commute_seq", COMMUTE_SEQ);
   ("commute_par", COMMUTE_PAR);
   ("commute", COMMUTE_PAR);
+  (* moverness - sequential only because it's just for verification. *)
+  ("commute_right", COMMUTE_RIGHT);
+  ("commute_left", COMMUTE_LEFT);
+  ("rightmover", COMMUTE_RIGHT);
+  ("leftmover", COMMUTE_LEFT);
   ("hashtable", HASHTABLE);
   ("hashtable_seq", HASHTABLE_SEQ);
   ("hashtable_naive", HASHTABLE_NAIVE);

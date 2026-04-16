@@ -111,13 +111,21 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
 let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
   
-let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list) (vars : ty bindlist) =
+let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node list) (vars : ty bindlist) =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding
   in
   Servois2.Choose.choose := Servois2.Choose.poke2;
+  begin match cv with 
+  | CommuteVarLM -> 
+    Servois2.Solve.mode := Servois2.Solve.LeftMover
+  | CommuteVarRM -> 
+    Servois2.Solve.mode := Servois2.Solve.RightMover
+  | _ -> () end;
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
     Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
+    (* Put solver back to normal Bowtie mode, regardless *)
+    Servois2.Solve.mode := Servois2.Solve.Bowtie;
     exp_of_phi phi embedding
   (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
 
@@ -126,4 +134,4 @@ let verify_of_block e genv _ blks vars : bool option * bool option =
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding in
   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
   Servois2.Verify.verify spec m1 m2 cond,
-  Servois2.Verify.verify ~options:{Servois2.Verify.default_verify_options with ncom = true} spec m1 m2 (EUop(Not, cond))
+  Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))

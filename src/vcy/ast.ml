@@ -121,6 +121,9 @@ and commute_condition =
 and commute_variant =
 | CommuteVarSeq
 | CommuteVarPar
+| CommuteVarLM
+| CommuteVarRM
+
 
 and block = stmt node list
 

@@ -23,6 +23,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token WHILE    /* while */
 %token COMMUTE_SEQ /* commute_seq */
 %token COMMUTE_PAR /* commute_par */
+%token COMMUTE_LEFT /* commute_left */
+%token COMMUTE_RIGHT /* commute_right */
 %token HASHTABLE /* hashtable */
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
@@ -258,6 +260,8 @@ stmt:
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }
   | COMMUTE_PAR { CommuteVarPar }
+  | COMMUTE_LEFT { CommuteVarLM }
+  | COMMUTE_RIGHT { CommuteVarRM }
 
 commute_condition:
   | LPAREN phi=exp RPAREN { PhiExp(phi) }
