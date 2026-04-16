@@ -5,6 +5,8 @@ let sp = Printf.sprintf
 
 let servois2_synth_option = ref Servois2.Synth.default_synth_options
 
+let servois2_verify_option = ref Servois2.Verify.default_verify_options
+
 let check_prover () = !servois2_synth_option.prover
 
 let assoc_update (k : 'a) (v : 'b) (l : ('a * 'b) list) =

@@ -558,10 +558,10 @@ module RunVerify : Runner = struct
     Arg.current := 1;
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
-    let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover ();
+    let verify_options = {
+      Servois2.Verify.default_verify_options with prover = get_prover ();
     } in
-    Util.servois2_synth_option := synth_options;
+    Util.servois2_verify_option := verify_options;
     match anons with
     | [prog] -> verify prog
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
