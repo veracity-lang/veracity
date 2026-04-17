@@ -137,11 +137,15 @@ and stmt =
 | For of vdecl list * exp node option * stmt node option * block node
 | While of exp node * block node
 | Raise of exp node
-| Commute of commute_variant * commute_condition * block node list
+| Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
 | Assert of exp node
 | Assume of exp node
 | Havoc of id
 | Require of exp node
+
+and commute_pre_cond = exp node 
+
+and commute_post_cond = exp node
 
 and tyval = ty * (value ref)
 

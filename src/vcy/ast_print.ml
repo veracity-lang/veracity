@@ -251,7 +251,7 @@ module AstPP = struct
         end; pp_close_box fmt ();
         pps ") "; print_block_aux fmt body
 
-      | Commute(variant, phi, bodies) ->
+      | Commute(variant, phi, bodies, pre, post) ->
           pps "commute_";
           begin match variant with
             | CommuteVarSeq -> pps "seq"
@@ -502,8 +502,8 @@ module AstML = struct
                           (string_of_option string_of_exp e)
                           (string_of_option string_of_stmt s) (string_of_block b)
     | While (e,b) -> sp "While (%s, %s)" (string_of_exp e) (string_of_block b)
-    | Commute (var,phi,bl) -> 
-      sp "Commute (%s, %s, %s)"
+    | Commute (var,phi,bl, pre,post) -> 
+      sp "Commute (%s, %s, %s, %s, %s)"
         begin match var with
         | CommuteVarSeq -> "CommuteVarSeq"
         | CommuteVarPar -> "CommuteVarPar"
@@ -513,6 +513,8 @@ module AstML = struct
         | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
         end
         (string_of_list string_of_block bl)
+        (match pre  with Some p -> string_of_exp p | _ -> "true")
+        (match post with Some p -> string_of_exp p | _ -> "true")
     | Raise e ->
       sp "Raise (%s)" (string_of_exp e)
     | Assert e ->

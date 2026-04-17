@@ -45,6 +45,10 @@
   ("commute_left", COMMUTE_LEFT);
   ("rightmover", COMMUTE_RIGHT);
   ("leftmover", COMMUTE_LEFT);
+  ("pre", PRE);
+  ("post", POST);
+
+
   ("hashtable", HASHTABLE);
   ("hashtable_seq", HASHTABLE_SEQ);
   ("hashtable_naive", HASHTABLE_NAIVE);

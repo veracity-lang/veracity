@@ -111,9 +111,9 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
 let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
   
-let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node list) (vars : ty bindlist) =
+let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node list) (vars : ty bindlist) pre post =
   let embedding = generate_embedding_map vars in
-  let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding
+  let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post
   in
   Servois2.Choose.choose := Servois2.Choose.poke2;
   begin match cv with 
@@ -129,9 +129,9 @@ let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node lis
     exp_of_phi phi embedding
   (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
 
-let verify_of_block e genv _ blks vars : bool option * bool option =
+let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
-  let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding in
+  let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
   Servois2.Verify.verify spec m1 m2 cond,
   Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))

@@ -58,7 +58,7 @@ and c_of_stmt = function
     | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (c_of_ty ty) (!mangle id) (c_of_expnode rhs)) inits) (guard |> Option.map c_of_expnode |> Option.value ~default:"") (update |> Option.map c_of_stmtnode |> Option.value ~default:"") (c_of_blocknode body)
     | While(guard, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
     | Raise(e) -> raise @@ NotImplemented "c_of_stmt Raise"
-    | Commute(var, phi, bodies) -> !handle_comm phi bodies
+    | Commute(var, phi, bodies, pre, post) -> !handle_comm phi bodies
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (c_of_expnode e)
 and c_of_stmtnode x = c_of_stmt x.elt

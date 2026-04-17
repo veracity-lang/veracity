@@ -352,7 +352,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
           bind binds @@ compile_block_to_smt tl vctrs
 
-        | Commute (_, _, blks) -> 
+        | Commute (_, _, blks, _, _) -> 
           (* List.map (fun {elt=bl; _} -> compile_block_to_smt bl ) blks *)
           let comm_blk = List.map (fun {elt=bl; _} -> bl ) blks in
           compile_block_to_smt (List.concat comm_blk) vctrs; 
@@ -407,6 +407,13 @@ let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
     ) !gstates;
     ELop (And, block_to_exp :: !remain_variables @ [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
 
+let generate_spec_pre_post_condition pre post =
+  let vctrs = variable_ctr_list in
+  match pre, post with 
+  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
+  | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
+  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
+  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
 
 let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let args = List.map (fun (ty,id) -> (Smt.Var id, sty_of_ty ty)) m.args in
@@ -433,7 +440,7 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
-let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) =
+let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
 
@@ -444,10 +451,12 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let mdecls = List.map create_dummy_method blks in
   let methods = List.map (compile_method_to_methodSpec genv) mdecls in
   
+  let pre, post = generate_spec_pre_post_condition pre post in
+
   let preamble = None in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = Smt.EConst (CBool true); state = state; methods= methods; smt_fns = []} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 

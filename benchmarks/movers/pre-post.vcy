@@ -1,0 +1,33 @@
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    
+  
+    commute _ { /* (c > 0) */
+        pre: (true)
+        { c = c * -1; } { }
+        post: (c < 0)
+    }
+    
+    commute _ { /* false */
+        pre: (true)
+        { c = c * -1; } { }
+        post: (false)
+    }
+
+    commute _ { /* false post-condition */
+        pre: (x == -1)
+        { c = c * -1; } { }
+        post: (x == 1)
+    }
+    
+    commute _ { /* true based on pre, m1, and post */
+        pre: (x == -1)
+        { c = -1; x = x * c; } { }
+        post: (x == 1)
+    }
+
+    return 0;
+}
+
+
