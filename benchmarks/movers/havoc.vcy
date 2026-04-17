@@ -1,0 +1,30 @@
+/*
+ * ./vcy.exe infer ../benchmarks/movers/havoc.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    
+  
+    commute _ { /* true */
+        { havoc c; } { }
+    }
+    
+    commute_left _ { /* false - can't move c=1;havoc to havoc;c=1 */
+        { havoc c; } { c = 1; }
+    }
+
+    commute_right _ { /* true */
+        { havoc c; } { c = 1; }
+    }
+
+    commute_right _ { /* true. same, but also doesn't impact x */
+        pre: (x == 1)
+        { havoc c; } { c = x; }
+        post: (x == 1)
+    }
+
+    return 0;
+}
+
+

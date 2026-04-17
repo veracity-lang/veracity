@@ -415,11 +415,13 @@ module RunInfer : Runner = struct
   let anon_fun (v : string) =
     anons := v :: !anons
 
+  (* Servois2 options *)
   let prover_name = ref ""
   let output_file = ref ""
   let timeout = ref None
   let lattice = ref false
   let lattice_timeout = ref (Some 30.)
+  let use_ae = ref false
   let stronger_pred_first = ref false
   let no_cache = ref true
 
@@ -440,6 +442,7 @@ module RunInfer : Runner = struct
     ; "--lattice", Arg.Unit (fun () -> lattice := true), " Create and use lattice of predicate implication"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " Set time limit for execution"
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice" 
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
@@ -488,11 +491,14 @@ module RunInfer : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover (); timeout = !timeout; 
-                                        lattice = !lattice;
-                                        lattice_timeout = !lattice_timeout;
-                                         no_cache = !no_cache;
-                                         stronger_predicates_first = !stronger_pred_first;
+      Servois2.Synth.default_synth_options with
+        prover = get_prover ();
+        timeout = !timeout; 
+        lattice = !lattice;
+        lattice_timeout = !lattice_timeout;
+        no_cache = !no_cache;
+        stronger_predicates_first = !stronger_pred_first;
+        use_ae = !use_ae
     } in
     Util.servois2_synth_option := synth_options;
     match anons with
@@ -510,9 +516,12 @@ module RunVerify : Runner = struct
   let anons = ref []
   let cond = ref false 
 
+
   let anon_fun (v : string) =
     anons := v :: !anons
 
+  (* Servois2 options *)
+  let use_ae = ref false
   let prover_name = ref ""
 
   let speclist =
@@ -522,6 +531,7 @@ module RunVerify : Runner = struct
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
     ] |>
@@ -559,7 +569,9 @@ module RunVerify : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let verify_options = {
-      Servois2.Verify.default_verify_options with prover = get_prover ();
+      Servois2.Verify.default_verify_options with 
+         prover = get_prover ();
+         use_ae = !use_ae
     } in
     Util.servois2_verify_option := verify_options;
     match anons with
