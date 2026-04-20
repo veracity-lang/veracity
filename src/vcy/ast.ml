@@ -57,6 +57,8 @@ type ty =
 | THashTable of ty * ty
 | TChanR | TChanW
 | TStruct of id
+| TLoc
+| THeapValue of ty * ty
 
 
 let rec sty_of_ty = function
@@ -98,6 +100,7 @@ type exp =
 | Ternary of exp node * exp node * exp node
 | CStruct of id * exp node bindlist
 | Proj of exp node * id
+| HeapValue of exp node * exp node
 
 and tmethod =
   { pure : bool
@@ -195,6 +198,8 @@ and value =
   | VChanR  of string * in_channel * int
   | VChanW  of string * out_channel
   | VStruct of id * value ref bindlist
+  | VLoc       of int64
+  | VHeapValue of int64 * int64 option
 
 and hashtable = ty * ty * ht_variant
 
@@ -316,6 +321,8 @@ let type_of_value : value -> ty =
   | VArr (ty,_)    -> TArr ty
   | VStruct (id,_) -> TStruct id
   | VHashTable (tyk, tyv, _) -> THashTable (tyk, tyv)
+  | VLoc _             -> TLoc
+  | VHeapValue _       -> THeapValue (TInt, TLoc)
 
 (* Is a type passed by reference (sort of)? 
  * Technically everything is passed by value.
@@ -342,6 +349,9 @@ let rec ty_eq (env : env) ty1 ty2 =
     ty_eq env v1 v2
   | TStruct id1, TStruct id2 ->
     id1 = id2
+  | TLoc, TLoc -> true
+  | THeapValue (t1a, t1b), THeapValue (t2a, t2b) ->
+    ty_eq env t1a t2a && ty_eq env t1b t2b
   | _ -> false
 
 let ty_match env v ty =
@@ -358,6 +368,8 @@ let ty_default_value (env : env) : ty -> value =
   | TArr ty    -> VNull (TArr ty)
   | TStruct id -> VNull (TStruct id)
   | THashTable (tyk, tyv) -> VNull (THashTable (tyk, tyv))
+  | TLoc -> VNull TLoc
+  | THeapValue (tyi, tyl) -> VNull (THeapValue (tyi, tyl))
 
 let value_of_htdata : value Hashtables.htdata -> value =
   function

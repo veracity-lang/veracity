@@ -30,6 +30,10 @@
   ("void", TVOID);
   ("int", TINT);
   ("string", TSTRING);
+  (* type keyword for declarations *)
+  ("tloc", TLOC); (* loc l = ... *)
+  ("theapval", THEAP_VALUE); (* heapval v = { | } *)
+
   ("struct", STRUCT);
   ("else", ELSE);
   ("if", IF);
@@ -97,6 +101,7 @@
   ( "||", LOR);
   ( "&", BAND);
   ( "|", BOR);
+  ( "{}", LRBRACE);
   
   ( "=>", FUNC);
 
@@ -186,7 +191,8 @@ rule token = parse
   | newline { newline lexbuf; token lexbuf }
 
   | ';' | ':' | '.' | '?' | ',' | '{' | '}' | '+' | '^' | '-' | '*' | '=' | "==" 
-  | "!=" | '!' | '~' | '(' | ')' | '[' | ']' | '%'
+  | "!=" | '!' | '~'
+  | "{}" | '(' | ')' | '[' | ']' | '%'
   | "<" | "<=" | ">" | ">=" | "<<" | ">>" | ">>>" 
   | "&&" | "||" | "&" | "|" | "=>" | "_" | "/" | "**"
     { create_token lexbuf }

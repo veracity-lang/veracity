@@ -86,6 +86,9 @@ module AstPP = struct
     | THashTable (tyk, tyv) -> pps "hashtable["; print_ty_aux fmt tyk; pps ", "; print_ty_aux fmt tyv; pps "]"
     | TStruct sid -> pps sid
     | TArr ty -> print_ty_aux fmt ty; pps "[]"
+    | TLoc -> pps "loc"
+    | THeapValue (tyi, tyl) ->
+      pps "HeapValue["; print_ty_aux fmt tyi; pps ", "; print_ty_aux fmt tyl; pps "]"
 
   and print_exp_aux level fmt e =
     let pps = pp_print_string fmt in
@@ -402,6 +405,9 @@ module AstML = struct
       sp "THashTable (%s, %s)" (string_of_ty tyk) (string_of_ty tyv)
     | TArr ty -> sp "TArr (%s)" @@ string_of_ty ty
     | TStruct id -> sp "TStruct (%s)" @@ string_of_id id
+    | TLoc -> "TLoc"
+    | THeapValue (tyi, tyl) ->
+      sp "THeapValue (%s, %s)" (string_of_ty tyi) (string_of_ty tyl)
 
   let string_of_binop : binop -> string = function
     | Add    -> "Add"
@@ -441,6 +447,7 @@ module AstML = struct
       | CNull t -> sp "CNull %s" (string_of_ty t)
       | CBool b -> sp "CBool %b" b
       | CInt i -> sp "CInt %LiL" i
+      | HeapValue (e1, e2) -> sp "HeapValue (%s, %s)" (string_of_exp e1) (string_of_exp e2)
       | CStr s -> sp "CStr %S" s
       | CArr (t,cs) -> sp "CArr (%s, %s)" 
                           (string_of_ty t) 
@@ -471,6 +478,7 @@ module AstML = struct
           id
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
+      | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
     end
 
   and string_of_exp (e:exp node) : string = 
@@ -507,6 +515,8 @@ module AstML = struct
         begin match var with
         | CommuteVarSeq -> "CommuteVarSeq"
         | CommuteVarPar -> "CommuteVarPar"
+        | CommuteVarLM -> "CommuteVarLM"
+        | CommuteVarRM -> "CommuteVarRM"
         end
         begin match phi with 
         | PhiInf   -> "PhiInf" 
@@ -583,6 +593,12 @@ module AstML = struct
     | VChanW (s, _)    -> "write_channel(" ^ s ^ ")"
 
     | VHashTable _ -> raise @@ NotImplemented "string_of_value VHashTable"
+
+    | VLoc loc -> sp "loc(%s)" (Int64.to_string loc)
+    | VHeapValue (n, None) ->
+      sp "HeapValue(%s, null)" (Int64.to_string n)
+    | VHeapValue (n, Some loc) ->
+      sp "HeapValue(%s, loc(%s))" (Int64.to_string n) (Int64.to_string loc)
 
     | VStruct (id,vs) ->
       List.map (fun (i,v) -> sp " %s = %s" i (string_of_value !v)) vs |>

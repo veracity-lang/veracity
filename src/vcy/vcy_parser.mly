@@ -28,6 +28,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token HASHTABLE /* hashtable */
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
+%token TLOC        /* loc */
+%token THEAP_VALUE /* heap_value */
 %token RETURN   /* return */
 %token SEMI     /* ; */
 %token COLON    /* : */
@@ -48,6 +50,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token RPAREN   /* ) */
 %token LBRACKET /* [ */
 %token RBRACKET /* ] */
+%token LRBRACE /* {} */
 %token TILDE    /* ~ */
 %token BANG     /* ! */
 %token DOT      /* . */
@@ -153,6 +156,7 @@ arglist:
     
 ty:
   | TINT   { TInt }
+  | TLOC   { TLoc }
   | TBOOL  { TBool }
   | TSTRING { TStr }
   | TVOID { TVoid }
@@ -161,6 +165,8 @@ ty:
   | t=ty LBRACKET RBRACKET { TArr t }
   | HASHTABLE LBRACKET tyk=ty COMMA tyv=ty RBRACKET { THashTable (tyk,tyv) }
   | id=UIDENT { TStruct id }
+  | TLOC { TLoc }
+  | THEAP_VALUE LBRACKET tyi=ty COMMA tyl=ty RBRACKET { THeapValue (tyi, tyl) }
 
 %inline bop:
   | STAR {Mul}
@@ -199,6 +205,14 @@ exp:
   | be=basic_exp        { be }
   | nd=new_data         { nd }
 
+locexp:
+  | i=INT   { loc $startpos $endpos @@ CInt i }
+  | NULL    { loc $startpos $endpos @@ CNull TLoc }
+
+heapcell_exp:
+  | LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
+       { loc $startpos $endpos @@ HeapValue (e1, e2) }
+
 basic_exp:
   | ae=atomic_expr                  { ae }
   | e1=basic_exp b=bop e2=basic_exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
@@ -221,6 +235,8 @@ atomic_expr:
   | FALSE      { loc $startpos $endpos @@ CBool false}
 
 new_data:
+  | NEW LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
+       { loc $startpos $endpos @@ HeapValue(e1,e2) }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         {loc $startpos $endpos @@ CArr(t, es)}
   | NEW t=ty LBRACKET e=basic_exp RBRACKET {loc $startpos $endpos @@ NewArr(t,e)}

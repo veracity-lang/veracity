@@ -866,7 +866,9 @@ let cook_calls (g : global_env) : global_env =
         CStruct (id, List.map (fun (i, e) -> i, cook_calls_of_exp e) el)
       | Proj (e, i) ->
         Proj (cook_calls_of_exp e, i)
-      | Id _ | CNull _ | CBool _ 
+      | HeapValue (e1, e2) ->
+        HeapValue (cook_calls_of_exp e1, cook_calls_of_exp e2)
+      | Id _ | CNull _ | CBool _
       | CInt _ | CStr _ | NewHashTable _ -> e.elt
     in
     node_up e e'
