@@ -100,7 +100,10 @@ type exp =
 | Ternary of exp node * exp node * exp node
 | CStruct of id * exp node bindlist
 | Proj of exp node * id
+| HeapAlloc of exp node * exp node
 | HeapValue of exp node * exp node
+| HDerefValue of exp node
+| HDerefNext of exp node
 
 and tmethod =
   { pure : bool
@@ -198,7 +201,7 @@ and value =
   | VChanR  of string * in_channel * int
   | VChanW  of string * out_channel
   | VStruct of id * value ref bindlist
-  | VLoc       of int64
+  | VLoc       of int64 option
   | VHeapValue of int64 * int64 option
 
 and hashtable = ty * ty * ht_variant

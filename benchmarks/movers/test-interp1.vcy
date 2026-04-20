@@ -1,0 +1,7 @@
+int main(int argc, string[] argv) {
+    tloc l = new { 42 {} null };
+    int v = l -> value;
+    tloc n = l -> next;
+    print(string_of_int(v));
+    return 0;
+}

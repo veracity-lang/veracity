@@ -372,8 +372,48 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | Some v -> env, !v
       | None -> raise @@ ValueFailure ("Struct does not have field " ^ fid, loc)
       end
-    | _ -> raise @@ TypeFailure ("Projection source is not a struct", loc)
+  | HeapValue (eval1, eloc2) ->
+    let env, v1 = interp_exp env eval1 in
+    let env, v2 = interp_exp env eloc2 in
+    begin match v1, v2 with
+    | VInt n, VNull TLoc -> env, VHeapValue (n, None)
+    | VInt n, VLoc (Some(l))     -> env, VHeapValue (n, Some l)
+    | _ -> raise @@ TypeFailure ("HeapValue constructor: expected (int, loc)", loc)
     end
+  | HeapAlloc (eval1, eloc2) ->
+      let env',  v = interp_exp env  eval1 in
+      let env'', l = interp_exp env' eloc2 in
+      (* get a new leap location *)
+      let loc' = Vcylib.heap_next_gen() in 
+      begin match v, l with 
+        | VInt i, VInt ii ->
+          Hashtbl.replace Vcylib.heap_store loc' (i, Some ii);
+          env'', VLoc (Some(loc'))
+        | VInt i, VNull TLoc ->
+          Hashtbl.replace Vcylib.heap_store loc' (i, None);
+          env'', VLoc (Some(loc'))
+        | _ -> failwith "HeapAlloc attempted with a non-integer value" 
+      end 
+  | HDerefValue (eloc) ->
+      let env',  l = interp_exp env eloc in
+      begin match l with 
+        | VLoc Some(i) ->
+          try 
+            let (v,l') = Hashtbl.find Vcylib.heap_store i in 
+              (env', VInt v)
+          with Not_found -> failwith "HDerefValue heap not found"
+        | _ -> failwith "HDerefValue non-integer location"
+      end
+  | HDerefNext (eloc) ->
+      let env',  l = interp_exp env eloc in
+      begin match l with 
+        | VLoc Some(i) ->
+            try 
+              let (v,l') = Hashtbl.find Vcylib.heap_store i in 
+                  env', VLoc l'
+            with Not_found -> failwith "HDerefNext heap not found"
+        | _ -> failwith "HDerefNext non-integer location"
+      end
   | CallRaw (id, args) ->
     let env, args = interp_exp_seq env args in
     begin match find_binding id env BindM with
@@ -868,8 +908,13 @@ let cook_calls (g : global_env) : global_env =
         Proj (cook_calls_of_exp e, i)
       | HeapValue (e1, e2) ->
         HeapValue (cook_calls_of_exp e1, cook_calls_of_exp e2)
+      | HeapAlloc (e1, e2) ->
+        HeapAlloc (cook_calls_of_exp e1, cook_calls_of_exp e2)
       | Id _ | CNull _ | CBool _
       | CInt _ | CStr _ | NewHashTable _ -> e.elt
+      | HDerefValue l -> HDerefValue(cook_calls_of_exp l)
+      | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
+      | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))
     in
     node_up e e'
   in

@@ -50,7 +50,10 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token RPAREN   /* ) */
 %token LBRACKET /* [ */
 %token RBRACKET /* ] */
-%token LRBRACE /* {} */
+%token LRBRACE  /* {} heap cell */
+%token ARROW    /* -> heap deref */
+%token HEAPVALUE_NEXT  /* -> "next" */
+%token HEAPVALUE_VALUE  /* -> "value" */
 %token TILDE    /* ~ */
 %token BANG     /* ! */
 %token DOT      /* . */
@@ -208,6 +211,8 @@ exp:
 locexp:
   | i=INT   { loc $startpos $endpos @@ CInt i }
   | NULL    { loc $startpos $endpos @@ CNull TLoc }
+  | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | l=locexp ARROW HEAPVALUE_NEXT { loc $startpos $endpos @@ HDerefNext ( l ) }
 
 heapcell_exp:
   | LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
@@ -225,6 +230,8 @@ basic_exp:
                         { loc $startpos $endpos @@ CallRaw (e,es) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj(e, id) }
   | LPAREN e=exp RPAREN { e }
+  | l=locexp ARROW HEAPVALUE_NEXT  { loc $startpos $endpos @@ HDerefNext  ( l ) }
+  | l=locexp ARROW HEAPVALUE_VALUE { loc $startpos $endpos @@ HDerefValue ( l ) }
   
 atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
@@ -236,7 +243,7 @@ atomic_expr:
 
 new_data:
   | NEW LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
-       { loc $startpos $endpos @@ HeapValue(e1,e2) }
+       { loc $startpos $endpos @@ HeapAlloc(e1,e2) }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         {loc $startpos $endpos @@ CArr(t, es)}
   | NEW t=ty LBRACKET e=basic_exp RBRACKET {loc $startpos $endpos @@ NewArr(t,e)}

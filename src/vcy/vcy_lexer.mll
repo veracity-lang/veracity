@@ -32,7 +32,9 @@
   ("string", TSTRING);
   (* type keyword for declarations *)
   ("tloc", TLOC); (* loc l = ... *)
-  ("theapval", THEAP_VALUE); (* heapval v = { | } *)
+  ("theapval", THEAP_VALUE); (* heapval v = { {} } *)
+  ("value", HEAPVALUE_VALUE);  (* for  l->value *)
+  ("next",  HEAPVALUE_NEXT); (* for  l->next  *)
 
   ("struct", STRUCT);
   ("else", ELSE);
@@ -95,6 +97,7 @@
   ( "<=", LEQ);
   ( ">=", GEQ);
   ( "<<", LSHIFT);
+  ( "->", ARROW);
   ( ">>", RSHIFT);
   ( ">>>", RSHIFTU);
   ( "&&", LAND);
@@ -193,7 +196,7 @@ rule token = parse
   | ';' | ':' | '.' | '?' | ',' | '{' | '}' | '+' | '^' | '-' | '*' | '=' | "==" 
   | "!=" | '!' | '~'
   | "{}" | '(' | ')' | '[' | ']' | '%'
-  | "<" | "<=" | ">" | ">=" | "<<" | ">>" | ">>>" 
+  | "<" | "<=" | ">" | ">=" | "<<" | ">>" | ">>>" | "->"
   | "&&" | "||" | "&" | "|" | "=>" | "_" | "/" | "**"
     { create_token lexbuf }
 

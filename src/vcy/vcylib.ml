@@ -494,15 +494,17 @@ let lib_io : method_library =
 
 let heap_store : (int64, int64 * int64 option) Hashtbl.t = Hashtbl.create 16
 let heap_next_loc : int64 ref = ref 0L
+let heap_next_gen () : int64 = 
+  let rv = !heap_next_loc in
+  heap_next_loc := Int64.succ rv;
+  rv
 
 let lib_heap : method_library =
   [ "heap_alloc",
     { pure = false
     ; func = begin function
       | env, [] ->
-        let loc = !heap_next_loc in
-        heap_next_loc := Int64.succ loc;
-        env, VLoc loc
+        env, VLoc (Some (heap_next_gen ()))
       | _ -> raise @@ TypeFailure ("heap_alloc arguments", Range.norange)
       end
     ; pc = None
@@ -510,7 +512,7 @@ let lib_heap : method_library =
   ; "heap_write",
     { pure = false
     ; func = begin function
-      | env, [VLoc loc; VHeapValue (n, next)] ->
+      | env, [VLoc Some(loc); VHeapValue (n, next)] ->
         Hashtbl.replace heap_store loc (n, next);
         env, VVoid
       | _ -> raise @@ TypeFailure ("heap_write arguments", Range.norange)
@@ -520,7 +522,7 @@ let lib_heap : method_library =
   ; "heap_read_next",
     { pure = false
     ; func = begin function
-      | env, [VLoc loc] ->
+      | env, [VLoc Some(loc)] ->
         begin match Hashtbl.find_opt heap_store loc with
         | None ->
           raise @@ ValueFailure ("heap_read_next: unallocated location " ^ Int64.to_string loc, Range.norange)

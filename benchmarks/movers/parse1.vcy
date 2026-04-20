@@ -1,0 +1,9 @@
+/*
+    loc_exp ::= Int | NULL
+    heapcell_exp ::= |  {{ int {} loc_exp }}
+12345678901234567890123
+*/
+int main(int argc, string[] argv) {
+    tloc l = new { 42 {} null };
+    return 0;
+}

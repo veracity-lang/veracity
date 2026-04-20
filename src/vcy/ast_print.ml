@@ -154,6 +154,26 @@ module AstPP = struct
           pps " : ";
           print_exp_aux this_level fmt e;
           pp_close_box fmt ()
+      | HeapValue (e1, e2 ) ->
+          pp_open_box fmt 0;
+          pps "heapval{";
+          print_exp_aux this_level fmt e1;
+          pps "{}";
+          print_exp_aux this_level fmt e2;
+          pps "}";
+          pp_close_box fmt () 
+      | HeapAlloc (e1, e2 ) ->
+          pp_open_box fmt 0;
+          pps "new heapval{";
+          print_exp_aux this_level fmt e1;
+          pps "{}";
+          print_exp_aux this_level fmt e2;
+          pps "}";
+          pp_close_box fmt () 
+      | HDerefNext (l1) -> pps "TODO:Claude-Next" 
+      | HDerefValue (l1) -> pps "TODO:Claude-Value"
+      | _ -> failwith ("print_exp_aux: match failed for ")
+
     end; if this_level < level then pps ")"
 
   and print_cfield_aux l fmt (name, exp) =
@@ -448,6 +468,9 @@ module AstML = struct
       | CBool b -> sp "CBool %b" b
       | CInt i -> sp "CInt %LiL" i
       | HeapValue (e1, e2) -> sp "HeapValue (%s, %s)" (string_of_exp e1) (string_of_exp e2)
+      | HeapAlloc (e1, e2) -> sp "HeapAlloc (%s, %s)" (string_of_exp e1) (string_of_exp e2)
+      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1) 
+      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1) 
       | CStr s -> sp "CStr %S" s
       | CArr (t,cs) -> sp "CArr (%s, %s)" 
                           (string_of_ty t) 
@@ -479,6 +502,8 @@ module AstML = struct
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
       | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
+      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1) 
+      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1) 
     end
 
   and string_of_exp (e:exp node) : string = 
@@ -594,7 +619,8 @@ module AstML = struct
 
     | VHashTable _ -> raise @@ NotImplemented "string_of_value VHashTable"
 
-    | VLoc loc -> sp "loc(%s)" (Int64.to_string loc)
+    | VLoc None -> sp "loc(null)"
+    | VLoc Some(loc) -> sp "loc(%s)" (Int64.to_string loc)
     | VHeapValue (n, None) ->
       sp "HeapValue(%s, null)" (Int64.to_string n)
     | VHeapValue (n, Some loc) ->
