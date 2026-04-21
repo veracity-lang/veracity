@@ -37,6 +37,15 @@ let lib_string : method_library =
       end
     ; pc = None
     }
+  ; "string_of_loc",
+    { pure = true
+    ; func = begin function
+      | env, [VLoc (Some(i))] -> env, VStr (Int64.to_string i)
+      | env, [VLoc None] -> env, VStr "NULL"
+      | _ -> raise @@ TypeFailure ("string_of_loc arguments", Range.norange)
+      end
+    ; pc = None
+    }
   ; "string_of_bool",
     { pure = true
     ; func = begin function
@@ -491,13 +500,40 @@ let lib_io : method_library =
     }
   ]
 
-
+let heap_debug = false 
 let heap_store : (int64, int64 * int64 option) Hashtbl.t = Hashtbl.create 16
 let heap_next_loc : int64 ref = ref 0L
 let heap_next_gen () : int64 = 
   let rv = !heap_next_loc in
   heap_next_loc := Int64.succ rv;
   rv
+let heap_next_gen32 () : int = 
+  Int64.to_int (heap_next_gen())
+
+let heap_set (l:int64) (v:int64) (l':int64 option) : unit = 
+  match l' with 
+  | Some(i) ->
+      if heap_debug then Printf.printf "HEAP WRITE: %d -> (%d, %s)\n" (Int64.to_int l) (Int64.to_int v) (Int64.to_string i);
+      Hashtbl.replace heap_store l (v, Some(i))
+  | None ->
+      if heap_debug then Printf.printf "HEAP WRITE: %d -> (%d, NULL)\n" (Int64.to_int l) (Int64.to_int v);
+      Hashtbl.replace heap_store l (v, None)
+
+let heap_get (l:int64) : (int64 * int64 option) = 
+  try 
+    let (v,l') = Hashtbl.find heap_store l in 
+      if heap_debug then Printf.printf "HEAP READ loc %d has value (%d,%s)\n" (Int64.to_int l) (Int64.to_int v)
+        (match l' with | Some(ii) -> (Int64.to_string ii) | _ -> "null");
+      (v,l')
+    with Not_found -> failwith "Vcylib.heap_get"
+
+let heap_get_value (l:int64) : int64 = 
+  (fst (heap_get l))
+
+let heap_get_next (l:int64) : (int64 option) = 
+  (snd (heap_get l))
+
+
 
 let lib_heap : method_library =
   [ "heap_alloc",

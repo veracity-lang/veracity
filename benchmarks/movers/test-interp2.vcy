@@ -1,0 +1,15 @@
+int main(int argc, string[] argv) {
+    tloc inner = new { 43 {} null };
+    tloc outter = new { 42 {} inner };
+    /* Walk the list */
+    int v42 = outter -> value;
+    print("inner  = ");print(string_of_loc(inner));print("\n");
+    print("outter = ");print(string_of_loc(outter));print("\n");
+    print(string_of_int(v42)); print("\n");
+    assert(v42 == 42);
+    tloc nx = outter -> next;
+    int v43 = nx -> value;
+    print(string_of_int(v43)); print("\n");
+    assert(v43 == 43);
+    return v43;
+}

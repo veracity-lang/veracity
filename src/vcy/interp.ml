@@ -384,36 +384,30 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       let env',  v = interp_exp env  eval1 in
       let env'', l = interp_exp env' eloc2 in
       (* get a new leap location *)
-      let loc' = Vcylib.heap_next_gen() in 
+      let newloc = Vcylib.heap_next_gen() in 
       begin match v, l with 
         | VInt i, VInt ii ->
-          Hashtbl.replace Vcylib.heap_store loc' (i, Some ii);
-          env'', VLoc (Some(loc'))
+          Vcylib.heap_set newloc i (Some ii);  env'', VLoc (Some(newloc))
+        | VInt i, VLoc loc'' ->
+          Vcylib.heap_set newloc i loc'';      env'', VLoc (Some(newloc))
         | VInt i, VNull TLoc ->
-          Hashtbl.replace Vcylib.heap_store loc' (i, None);
-          env'', VLoc (Some(loc'))
-        | _ -> failwith "HeapAlloc attempted with a non-integer value" 
+          Vcylib.heap_set newloc i None;       env'', VLoc (Some(newloc))
+        | _ -> failwith "HeapAlloc attempted with bogus params" 
       end 
   | HDerefValue (eloc) ->
       let env',  l = interp_exp env eloc in
       begin match l with 
-        | VLoc Some(i) ->
-          try 
-            let (v,l') = Hashtbl.find Vcylib.heap_store i in 
-              (env', VInt v)
-          with Not_found -> failwith "HDerefValue heap not found"
-        | _ -> failwith "HDerefValue non-integer location"
-      end
+      | VLoc None -> failwith "HDerefValue on a null location"
+      | VLoc Some(i) ->
+        let v = Vcylib.heap_get_value i in 
+          (env',VInt v) end
   | HDerefNext (eloc) ->
       let env',  l = interp_exp env eloc in
       begin match l with 
-        | VLoc Some(i) ->
-            try 
-              let (v,l') = Hashtbl.find Vcylib.heap_store i in 
-                  env', VLoc l'
-            with Not_found -> failwith "HDerefNext heap not found"
-        | _ -> failwith "HDerefNext non-integer location"
-      end
+      | VLoc None -> failwith "HDerefNext on a null location"
+      | VLoc Some(i) ->
+        let l' = Vcylib.heap_get_next i in 
+          (env',VLoc l') end
   | CallRaw (id, args) ->
     let env, args = interp_exp_seq env args in
     begin match find_binding id env BindM with

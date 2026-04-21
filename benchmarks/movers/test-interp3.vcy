@@ -1,0 +1,26 @@
+int main(int argc, string[] argv) {
+    int nodes = int_of_string(argv[1]);
+    tloc inner = new { 42 {} null };
+    tloc prev = inner;
+    int n = nodes;
+    /* build the list */
+    while(n > 0) {
+        n = n - 1;
+        tloc cur = new { 15-n {} prev } ;
+        prev = cur;
+    }
+    /* print the list */
+    n = nodes;
+    print("The List:\n");
+    while(n > 0) {
+        n = n - 1;
+        tloc cur = prev;
+        int v = cur -> value;
+        tloc nx = cur -> next;
+        print(" cur->v={");print(string_of_int(v));print("{}");print(string_of_loc(nx));print("}, ");
+        prev = nx;
+    }
+
+    /*assert(v43 == 43);*/
+    return 0;
+}
