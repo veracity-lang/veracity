@@ -63,6 +63,7 @@ type ty =
 
 let rec sty_of_ty = function
   | TInt -> Smt.TInt
+  | TLoc -> Smt.TInt
   | TBool -> Smt.TBool
   | TStr -> Smt.TString
   | TArr t -> Smt.TArray (Smt.TInt, sty_of_ty t)
@@ -384,7 +385,16 @@ let htdata_of_value : value -> value Hashtables.htdata =
   | VInt i -> Hashtables.HTint (Int64.to_int i)
   | v -> Hashtables.HTD v
 
-
+let init_mangle_id : id -> Smt.exp Smt.binding = fun i ->
+  let [@warning "-8"] Smt.EVar mangled = (mangle_servois_id i 1) in
+    (mangled, Smt.EVar (Var i))
+  
+let init_mangle : ety -> Smt.exp Smt.bindlist = function
+  | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
+    [init_mangle_id i]
+  | ETHashTable (_,_,{ht;keys;size}) ->
+    List.map init_mangle_id [ht;keys;size]
+(*
 let init_mangle : ety -> Smt.exp Smt.bindlist =
   let [@warning "-8"] bind i =
     let Smt.EVar mangled = (mangle_servois_id i 1) in
@@ -394,7 +404,8 @@ let init_mangle : ety -> Smt.exp Smt.bindlist =
     [bind i]
   | ETHashTable (_,_,{ht;keys;size}) ->
     List.map bind [ht;keys;size]
-
+    *)
+(*
 let final_mangle (mangle : int) : ety -> Smt.exp = 
   let bind i =
     Smt.EBop (Eq, (mangle_servois_id_final i), (mangle_servois_id i mangle))
@@ -403,6 +414,15 @@ let final_mangle (mangle : int) : ety -> Smt.exp =
     bind i
   | ETHashTable (_,_,{ht;keys;size}) ->
     Smt.ELop (And, (List.map bind [ht;keys;size]))
+*)
+let final_mangle_id : int -> id -> Smt.exp = fun mangle i ->
+    Smt.EBop (Eq, (mangle_servois_id_final i), (mangle_servois_id i mangle))
+
+let final_mangle (mangle : int) : ety -> Smt.exp = function
+  | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
+    final_mangle_id mangle i
+  | ETHashTable (_,_,{ht;keys;size}) ->
+    Smt.ELop (And, (List.map (final_mangle_id mangle) [ht;keys;size]))
 
 let remove_index (mangled_id: string) : string =
   let r = Str.regexp "_[0-9]+" in 

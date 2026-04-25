@@ -1,0 +1,53 @@
+/*
+ * ./vcy.exe infer ../benchmarks/movers/heap.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+
+    tloc l1 = new { x {} null };
+    tloc l2 = new { y {} null };
+
+    /* true - writes to a cell commutes with assign null */
+    commute _ {
+        { l1 = new { 1 {} null }; }
+        { l2 = null; } 
+    }
+
+    /* writes to different cells commute */
+    commute _ {
+        { l1 = new { 1 {} null }; }
+        { l2 = new { 2 {} null }; }
+    }
+
+    /* write to l1 is a right mover relative to a write to l2 */
+    commute_right _ {
+        { l1 = new { 1 {} null }; }
+        { l2 = new { 2 {} null }; }
+    }
+
+    /* write to same cell then read: right mover but not left */
+    commute_right _ {
+        { l1 = new { 1 {} null }; }
+        { x = l1 -> value; }
+    }
+
+    commute_left _ { /* false - reading l1 after a write sees the new value */
+        { l1 = new { 1 {} null }; }
+        { x = l1 -> value; }
+    }
+
+    /* read from l1 commutes with an independent write to l2 */
+    commute _ {
+        { x = l1 -> value; }
+        { l2 = new { 2 {} null }; }
+    }
+
+    /* chasing the next pointer: read l1.next into l2, then read l2.val */
+    commute_right _ {
+        { l2 = l1 -> next; }
+        { y = l2 -> value; }
+    }
+
+    return 0;
+}

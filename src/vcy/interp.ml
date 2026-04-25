@@ -372,6 +372,26 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | Some v -> env, !v
       | None -> raise @@ ValueFailure ("Struct does not have field " ^ fid, loc)
       end
+    | env, VLoc (Some(loc_id)) ->
+      begin failwith "not here2"; match Hashtbl.find_opt Vcylib.heap_store loc_id with
+      | None -> raise @@ ValueFailure ("heap proj: unallocated location " ^ Int64.to_string loc_id, loc)
+      | Some (n, next) ->
+        begin match fid with
+        | "val"  -> env, VInt n
+        | "next" ->
+          begin match next with
+          | None   -> env, VNull TLoc
+          | Some l -> env, VLoc (Some(l))
+          end
+        | _ -> raise @@ TypeFailure ("Unknown heap field " ^ fid, loc)
+        end
+      end
+    | _ -> raise @@ TypeFailure ("Projection source is not a struct or loc", loc)
+    end
+  (* | NewCell ->
+    let loc_id = !Vcylib.heap_next_loc in
+    Vcylib.heap_next_loc := Int64.succ loc_id;
+    env, VLoc loc_id *)
   | HeapValue (eval1, eloc2) ->
     let env, v1 = interp_exp env eval1 in
     let env, v2 = interp_exp env eloc2 in
@@ -430,9 +450,19 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
     | BVUndef -> raise @@ IdNotFound (id, lhs.loc)
     | BVLocal (ty,r)
     | BVGlobal (ty,r) ->
-      if ty_match env v ty
-      then begin r := v; env end
-      else raise @@ TypeFailure ("assignment type mismatch", loc)
+      begin match ty, v with
+      | TLoc, VHeapValue (n, next) ->
+        begin match !r with
+        | VLoc Some(loc_id) ->
+          failwith "not here.";
+          Hashtbl.replace Vcylib.heap_store loc_id (n, next); env
+        | _ -> raise @@ ValueFailure ("heap write: variable is not an initialized loc", loc)
+        end
+      | _ ->
+        if ty_match env v ty
+        then begin r := v; env end
+        else raise @@ TypeFailure ("assignment type mismatch", loc)
+      end
     | _ -> raise @@ UnreachableFailure "assn id find bind"
     end
   | Index (a, i) ->

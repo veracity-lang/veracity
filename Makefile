@@ -1,2 +1,5 @@
 all:
-	cd src && dune build
+	cd src && dune build && cp vcy.exe ..
+
+clean:
+	cd src && make clean

@@ -235,7 +235,7 @@ basic_exp:
   
 atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
-  | t=ty NULL           { loc $startpos $endpos @@ CNull t }
+  | NULL                { loc $startpos $endpos @@ CNull TLoc }
   | id=IDENT            { loc $startpos $endpos @@ Id id }
   | s=STRING   { loc $startpos $endpos @@ CStr s}
   | TRUE       { loc $startpos $endpos @@ CBool true}

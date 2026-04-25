@@ -18,6 +18,7 @@ let generate_embedding_map (vars : ty bindlist) : embedding_map =
   let f (id, t) : ety =
     match t with
     | TInt -> ETInt id
+    | TLoc -> ETInt id
     | TBool -> ETBool id
     | TStr -> ETStr id
     | TArr t -> ETArr (id, sty_of_ty t)

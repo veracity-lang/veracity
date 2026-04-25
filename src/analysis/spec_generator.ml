@@ -15,6 +15,13 @@ let gstates = ref []
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
 
+(*
+  heap_alloc : Int (next fresh ID)
+  heap_value : Int -> Int (loc to value)
+  heap_next  : Int -> Int (loc to next loc)
+*)
+let heap_model_vars = [ "heap_alloc"; "heap_value"; "heap_next" ]
+
 let pre = ref (EConst (CBool true))
 
 let sexp_of_sexp_list = function
@@ -24,6 +31,7 @@ let sexp_of_sexp_list = function
 let get_stypes (embedding_vars : (ty binding * ety) list) : sty bindlist = 
   List.concat_map ( fun ((id,ty),ety) -> compile_ety_to_sty id ety ) embedding_vars
 
+let smt_negone () = (EUop (Smt.Neg, Smt.EConst (CInt (1))))
 
 let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servois2.Smt.pred_sig list =
   List.iter (
@@ -34,15 +42,23 @@ let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servoi
 
 
 let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
-   let exp_list = List.map (fun (n,_) -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n))) (get_stypes em_vars)
-   in
-   sexp_of_sexp_list exp_list
-
+  let varnames = heap_model_vars @ List.map fst (get_stypes em_vars) in
+  let exp_list = (List.map 
+    (fun n -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n)))
+  varnames) in
+  sexp_of_sexp_list exp_list
 
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
     ) embedding_vars
+    @ 
+    [ (Var "heap_value", Smt.TArray (Smt.TInt, Smt.TInt))
+    ; (Var "heap_next",  Smt.TArray (Smt.TInt, Smt.TInt))
+    ; (Var "heap_alloc", Smt.TInt)  ]
+    (* [ (Var "realWorld_data", Smt.TArray (Smt.TString, Smt.TArray(Smt.TInt, Smt.TString)))
+    ; (Var "realWorld_linenum", Smt.TArray (Smt.TString, Smt.TInt))
+    ; (Var "realWorld_opened", Smt.TSet Smt.TString)] *)
 
 let create_dummy_method (b: block node) : mdecl =
   mIndex := !mIndex + 1;
@@ -52,6 +68,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
   let terms = ref [] in
   let rec get_exp_term (e: exp node) : sexp * ty = 
       match e.elt with
+      | CNull _ -> terms := !terms @ [(smt_negone(), TInt)]; (smt_negone(), TInt)
       | CInt i -> terms := !terms @ [(Smt.EConst (CInt (Int64.to_int i)), TInt)]; (Smt.EConst (CInt (Int64.to_int i)), TInt)
       | CStr str -> terms := !terms @ [(Smt.EConst (CString str), TStr)]; (Smt.EConst (CString str), TStr)
       | Id id ->  
@@ -73,6 +90,13 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         let t2, _ = get_exp_term e2 in
         terms := !terms @ [(EFunc ("select", [t1; t2]), ty)];
         (EFunc ("select", [t1; t2]), ty)
+      | HeapAlloc (e1, e2) ->
+          let t1, ty1 = get_exp_term e1 in
+          let t2, ty2 = get_exp_term e2 in
+          (t2, ty2)
+      | HDerefValue ( l ) -> get_exp_term l
+      | HDerefNext  ( l ) -> get_exp_term l
+
       | Bop (op, e1, e2) ->
           let t1, ty1 = get_exp_term e1 in
           let t2, ty2 = get_exp_term e2 in
@@ -122,7 +146,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         (t2, typ2) (* TODO: make sure if it's enough to return *)
 
       | Call (MethodL (id, {pc=Some pc;_}), el) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
-      | _ -> failwith "Unknown expression!"
+      | _ -> failwith @@ sp "get_exp_terms: undefined exp: %s" @@ AstML.string_of_exp e
   in
   let _ = get_exp_term e in
   !terms
@@ -189,14 +213,18 @@ let set_variable_id (var: string) (side: int) (vctrs : (string, int ref) Hashtbl
 let get_postconditions () : sexp =
   let exp_list = ref [] in
   Hashtbl.iter (fun key -> fun value -> 
-                let ((id,ty),ety) = try List.find (fun ((id,ty),_) -> String.equal key id) !gstates with | x -> print_string key; print_newline (); raise x in
-                let final = match ty with 
-                | THashTable (_,_) ->
-                  final_mangle !value ety 
-                | _ -> let var = if !value == 0 then key else (key ^ "_" ^ Int.to_string (!value)) in
-                        Smt.EBop (Eq, EVar (VarPost key), EVar (Var var));
-                in
-                exp_list := !exp_list @ [final]
+                if List.mem key heap_model_vars then exp_list := !exp_list @ [final_mangle_id !value key]
+                else
+                match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
+                | None -> print_string key; print_newline (); raise Not_found
+                | Some ((id,ty),ety) ->
+                  let final = match ty with 
+                  | THashTable (_,_) ->
+                    final_mangle !value ety 
+                  | _ -> let var = if !value == 0 then key else (key ^ "_" ^ Int.to_string (!value)) in
+                          Smt.EBop (Eq, EVar (VarPost key), EVar (Var var));
+                  in
+                  exp_list := !exp_list @ [final]
                 ) variable_ctr_list;
     sexp_of_sexp_list !exp_list
 
@@ -222,6 +250,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
+    | CNull _ -> smt_negone(), []
     | CStr str -> Smt.EConst (CString str), []
     | Id id -> EVar (Var (set_variable_id id side vctrs indexed)), []
     | Index (e1,e2) when side == 1 -> 
@@ -254,10 +283,16 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
+      let heap_version = !(Hashtbl.find vctrs (List.hd heap_model_vars)) in
       let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
-          
+      (* Methods that update the heap - MAybe needed later. *)
+      (*
+      let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_heap} = pc fun_args in
+      begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) heap_model_vars
+      else () end;
+      *)
       let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
-      
+
       Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ; 
       predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
       terms_list := !terms_list @ t;
@@ -269,8 +304,30 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         let t', t_binds = f t in
         let e', e_binds = f e in
         EITE(i', t', e'), i_binds @ t_binds @ e_binds
-    | _ -> failwith @@ sp "undefined exp: %s" @@ AstML.string_of_exp e
+        (* We deal with this in statement Assign(lhs,HeapAlloc) instead *)
+    | HDerefValue ( l ) ->
+        let f x = exp_to_smt_exp x side ~indexed vctrs in
+        let l', v_binds = f l in
+        (* get the current heap_value variable *)
+        let hv_var = EVar (Var (set_variable_id "heap_value" side vctrs indexed)) in
+        EFunc ("select", [hv_var; l']), v_binds
+    | HDerefNext ( l ) ->
+        let f x = exp_to_smt_exp x side ~indexed vctrs in
+        let l', v_binds = f l in
+        (* get the current heap_next variable *)
+        let hv_var = EVar (Var (set_variable_id "heap_next" side vctrs indexed)) in
+        EFunc ("select", [hv_var; l']), v_binds
 
+    | HeapAlloc( v, l ) ->
+        failwith "HeapAlloc - should not have to do this"
+
+    | _ -> failwith @@ sp "exp_to_smt_exp: undefined exp: %s" @@ AstML.string_of_exp e
+
+let mk_var_pair var_id leftright vctrs = 
+  let cur_ctr = !(Hashtbl.find vctrs var_id) in
+  Hashtbl.replace vctrs var_id (ref(cur_ctr + 1));
+  (EVar (Smt.Var(var_id^"_"^(string_of_int  cur_ctr))), 
+   EVar (Smt.Var(var_id^"_"^(string_of_int (cur_ctr+1)))))
 
 let compile_block_to_smt_exp (genv: global_env) (b : block) =
   let local_variable_ctr_list = variable_ctr_list in
@@ -294,6 +351,34 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let store_smt = Smt.EFunc ("store", [name_exp_smt; index_exp_smt; exp_smt]) in
           ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
         
+        (* Heap Allocation *)
+        | Assn (exp, {elt = HeapAlloc ({ elt = val_exp; loc=l1 }, { elt = loc_exp; loc=l2}) as alloce; loc = ll }) ->
+            let path_smt, _ = begin match exp_to_smt_exp exp left vctrs with
+                            | EVar e, b -> e, b
+                            | _, _ -> failwith "left of HeapAlloc should be variable"
+                            end
+            in
+            (* Compile the value/next fields *)
+            let v_rtn, v_binds = exp_to_smt_exp {elt= val_exp;loc=l1} right vctrs in
+            let l_rtn, l_binds = exp_to_smt_exp {elt= loc_exp;loc=l2} right vctrs in
+
+            (* heap_alloc42 = heap_alloc41 + 1
+              heap_next42  = store heap_next41  heap_alloc41 l'
+              heap_value42 = store heap_value41 heap_alloc41 v'
+              ret = heap_alloc41
+            *)
+            let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
+            let heapnextv,  heapnextv'  = mk_var_pair "heap_next" right vctrs in
+            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+            bind (v_binds @ l_binds) @@ ELet ([(path_smt, heapallocv)],
+              (ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt(1))])],
+              (ELet ([to_var heapnextv' , EFunc ("store", [heapnextv;  heapallocv; l_rtn])],
+              (ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; heapallocv; v_rtn])],
+              compile_block_to_smt tl vctrs
+              ))))))
+            )
+
         | Assn (exp, {elt = Call (MethodL (id, {pc=Some pc;_}), el) as calle; loc = l}) ->
           let e_rtn, e_binds = exp_to_smt_exp {elt= calle;loc=l} right vctrs  in
           let path_smt, _ = begin match exp_to_smt_exp exp left vctrs with
@@ -342,12 +427,17 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
 
           let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
+          let heap_version = !(Hashtbl.find vctrs (List.hd heap_model_vars)) in
           let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
-                              
+          (* Methods that update the heap - maybe needed later *)
+          (*
+          let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_heap} = pc fun_args in
+          *)
           let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
-          
           predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
           terms_list := !terms_list @ t;
+          (*begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) heap_model_vars
+          else () end;*)
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
           bind binds @@ compile_block_to_smt tl vctrs
@@ -390,6 +480,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | _ -> ()
     
   ) !gstates;
+  List.iter (
+    fun [@warning "-8"] id -> 
+          ety_init_list := !ety_init_list @ [init_mangle_id id];
+          if not (Hashtbl.mem variable_ctr_list id) then
+          Hashtbl.add variable_ctr_list id (ref 1) else
+          Hashtbl.replace variable_ctr_list id (ref 1) (* TODO: Don't need to set existing member to 1 in else case? *)
+  ) heap_model_vars;
   let res = compile_block_to_smt b local_variable_ctr_list in
   if (List.length !ety_init_list == 0) then
     res, local_variable_ctr_list
