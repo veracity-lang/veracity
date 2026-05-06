@@ -1,0 +1,16 @@
+/* commute_left { a->value = 1 } { a->value = 2 }
+ * Expected: false
+ * Two writes to the same cell's value field with different values do not
+ * commute: m1;m2 leaves value=2, m2;m1 leaves value=1, and no bijection
+ * can reconcile those.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-lm-heap-same-cell.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    tloc a = new { 0 {} null };
+    commute_left _ {
+        { a->value = 1; }
+        { a->value = 2; }
+    }
+    return 0;
+}

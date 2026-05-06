@@ -1,0 +1,15 @@
+/* commute_right { x = 1 } { y = 2 }
+ * Expected: true
+ * Writes to independent variables commute in both directions.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-rm-indep-writes.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+    commute_right _ {
+        { x = 1; }
+        { y = 2; }
+    }
+    return 0;
+}

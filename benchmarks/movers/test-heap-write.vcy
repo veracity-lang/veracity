@@ -1,0 +1,15 @@
+int main(int argc, string[] argv) {
+    tloc a = new { 10 {} null };
+    tloc b = new { 20 {} null };
+    /* write to value field */
+    a->value = 99;
+    /* write to next field */
+    a->next = b;
+    /* read back */
+    int v = a->value;
+    assert(v == 99);
+    tloc nx = a->next;
+    int v2 = nx->value;
+    assert(v2 == 20);
+    return 0;
+}

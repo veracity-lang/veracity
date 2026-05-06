@@ -1,0 +1,16 @@
+/* commute_right { c = 1 } { havoc c }
+ * Expected: false
+ * Rationale: (c=1; havoc c) can leave c at any value n.  For n != 1,
+ * no execution of (havoc c; c=1) can match because c=1 is always the
+ * final value.  Right-mover: false.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-rm-write-havoc.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    commute_right _ {
+        { c = 1; }
+        { havoc c; }
+    }
+    return 0;
+}

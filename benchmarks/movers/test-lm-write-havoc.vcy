@@ -1,0 +1,16 @@
+/* commute_left { c = 1 } { havoc c }
+ * Expected: true
+ * Rationale: (havoc c; c=1) always gives c=1. The reverse
+ * (c=1; havoc c) can witness c=1 by choosing the havoc value.
+ * Left-mover: true.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-lm-write-havoc.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    commute_left _ {
+        { c = 1; }
+        { havoc c; }
+    }
+    return 0;
+}

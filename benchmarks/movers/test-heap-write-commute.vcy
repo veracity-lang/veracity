@@ -1,0 +1,10 @@
+int main(int argc, string[] argv) {
+    tloc a = new { 0 {} null };
+    tloc b = new { 0 {} null };
+    /* writes to different nodes' value fields commute */
+    commute _ {
+        { a->value = 1; }
+        { b->value = 2; }
+    }
+    return 0;
+}

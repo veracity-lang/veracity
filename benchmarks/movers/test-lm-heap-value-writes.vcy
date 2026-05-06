@@ -1,0 +1,15 @@
+/* commute_left { a->value = 1 } { b->value = 2 }
+ * Expected: !(b == a)
+ * Writes to value fields of distinct heap nodes commute in both directions.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-lm-heap-value-writes.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    tloc a = new { 0 {} null };
+    tloc b = new { 0 {} null };
+    commute_left _ {
+        { a->value = 1; }
+        { b->value = 2; }
+    }
+    return 0;
+}

@@ -1,0 +1,18 @@
+/* commute_left { a[i] = x } { a[j] = y }
+ * Expected: !(i == j)
+ * Same condition as right-mover: array writes commute iff indices differ.
+ *
+ * ./vcy.exe infer benchmarks/movers/test-lm-array-writes.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int i = int_of_string(argv[1]);
+    int j = int_of_string(argv[2]);
+    int x = int_of_string(argv[3]);
+    int y = int_of_string(argv[4]);
+    int[] a = new int[]{0, 0};
+    commute_left _ {
+        { a[i] = x; }
+        { a[j] = y; }
+    }
+    return 0;
+}
