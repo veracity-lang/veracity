@@ -425,6 +425,7 @@ module RunInfer : Runner = struct
   let stronger_pred_first = ref false
   let no_cache = ref true
   let diagram = ref false
+  let generate_html = ref false
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -445,6 +446,7 @@ module RunInfer : Runner = struct
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
     ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
@@ -503,10 +505,34 @@ module RunInfer : Runner = struct
         use_ae = !use_ae
     } in
     Util.servois2_synth_option := synth_options;
-    Servois2.Util.diagram := !diagram;
-    Servois2.Util.dump_queries := !diagram;
+    let html = !generate_html in
+    if html then begin
+      (* --html implies diagram output; create a fresh session dir *)
+      Servois2.Util.diagram    := true;
+      Servois2.Util.dump_queries := true;
+      let sdir = Html_output.create_session_dir () in
+      Util.session_dir     := Some sdir;
+      Util.commute_counter := 0;
+      Util.commute_records := [];
+      Printf.eprintf "Session directory: %s\n" sdir
+    end else begin
+      Servois2.Util.diagram      := !diagram;
+      Servois2.Util.dump_queries := !diagram
+    end;
     match anons with
-    | [prog] -> infer_phis prog
+    | [prog] ->
+      infer_phis prog;
+      if html then begin
+        match !Util.session_dir with
+        | Some sdir ->
+          let out = Html_output.generate
+            ~source_file:prog
+            ~session_dir:sdir
+            ~records:!Util.commute_records
+          in
+          Printf.printf "HTML report: %s\n" out
+        | None -> ()
+      end
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 

@@ -123,12 +123,28 @@ let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node lis
   | CommuteVarRM ->
     Servois2.Solve.mode := Servois2.Solve.RightMover
   | _ -> () end;
+  (* For HTML output: create a fresh per-commute subdir inside the session
+     dir and point Servois2 there; reset its file counters for clean
+     per-commute numbering.  When no session is active (None), Servois2
+     auto-creates its own /tmp dir on first write. *)
+  let commute_subdir = match !Util.session_dir with
+    | None -> None
+    | Some sdir ->
+      let n = !Util.commute_counter in
+      Util.commute_counter := n + 1;
+      let d = Printf.sprintf "%s/commute_%04d" sdir n in
+      Unix.mkdir d 0o755;
+      Servois2.Util.output_dir := Some d;
+      Servois2.Util.query_counter := 0;
+      Servois2.Diagram.diagram_counter := 0;
+      Some d
+  in
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
-    Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
-    (* Put solver back to normal Bowtie mode, regardless *)
-    Servois2.Solve.mode := Servois2.Solve.Bowtie;
-    exp_of_phi phi embedding
-  (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
+  Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
+  Servois2.Solve.mode := Servois2.Solve.Bowtie;
+  Servois2.Util.output_dir := None;
+  Util.pending_subdir := commute_subdir;
+  exp_of_phi phi embedding
 
 let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in

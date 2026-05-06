@@ -62,6 +62,3 @@ test: all
 
 clean:
 	cd src && make clean
-	rm -f servois2_diagram*
-	rm -f servois2_query*
-	rm -f servois2_result*

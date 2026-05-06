@@ -786,9 +786,17 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
           then Printf.printf "%s\n"
             (AstPP.string_of_exp phi')
           else Printf.printf "Inferred condition at %s: %s\n"
-            (Range.string_of_range h.loc) 
+            (Range.string_of_range h.loc)
             (AstPP.string_of_exp phi')
           end;
+        (match !Util.session_dir, !Util.pending_subdir with
+        | Some _, Some subdir ->
+          Util.commute_records := !Util.commute_records @ [{
+            Util.loc_str   = Range.string_of_range h.loc;
+            Util.condition = AstPP.string_of_exp phi';
+            Util.subdir;
+          }]
+        | _ -> ());
         phi'
       in match phi with
     | PhiExp e -> if !force_infer then infer () else e
