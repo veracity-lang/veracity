@@ -424,6 +424,7 @@ module RunInfer : Runner = struct
   let use_ae = ref false
   let stronger_pred_first = ref false
   let no_cache = ref true
+  let diagram = ref false
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -443,7 +444,8 @@ module RunInfer : Runner = struct
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " Set time limit for execution"
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
-    ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice" 
+    ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
+    ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
@@ -501,6 +503,8 @@ module RunInfer : Runner = struct
         use_ae = !use_ae
     } in
     Util.servois2_synth_option := synth_options;
+    Servois2.Util.diagram := !diagram;
+    Servois2.Util.dump_queries := !diagram;
     match anons with
     | [prog] -> infer_phis prog
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))

@@ -17,6 +17,7 @@ MOVERS_INFER_TESTS := $(filter-out $(MOVERS_INTERP_TESTS), \
     $(wildcard benchmarks/movers/*.vcy))
 
 all:
+	make -C src/parallel
 	cd src && dune build && cp vcy.exe ..
 
 test: all
