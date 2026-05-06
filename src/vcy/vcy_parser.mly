@@ -198,11 +198,13 @@ ty:
   | BANG  { Lognot }
   | TILDE { Bitnot }
 
-lhs:  
+lhs:
   | id=IDENT            { loc $startpos $endpos @@ Id id }
   | e=basic_exp LBRACKET i=basic_exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj (e, id) }
+  | l=locexp ARROW HEAPVALUE_VALUE { loc $startpos $endpos @@ HDerefValue (l) }
+  | l=locexp ARROW HEAPVALUE_NEXT  { loc $startpos $endpos @@ HDerefNext  (l) }
 
 exp:
   | be=basic_exp        { be }

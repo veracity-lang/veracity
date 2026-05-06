@@ -423,15 +423,35 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
           bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
 
+        (* Heap value field write: loc->value = val *)
+        | Assn ({elt = HDerefValue loc_exp; _}, val_exp) ->
+          let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+          let val_smt, val_binds = exp_to_smt_exp val_exp right vctrs in
+          let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+          let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+          bind (loc_binds @ val_binds) @@
+            ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; val_smt])],
+              compile_block_to_smt tl vctrs)
+
+        (* Heap next field write: loc->next = next_loc *)
+        | Assn ({elt = HDerefNext loc_exp; _}, next_exp) ->
+          let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+          let next_smt, next_binds = exp_to_smt_exp next_exp right vctrs in
+          let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
+          let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+          bind (loc_binds @ next_binds) @@
+            ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; next_smt])],
+              compile_block_to_smt tl vctrs)
+
         | Assn (path, e) ->
-          let e_rtn, e_binds = exp_to_smt_exp e right vctrs in 
+          let e_rtn, e_binds = exp_to_smt_exp e right vctrs in
 
           let path_smt, _ = begin match exp_to_smt_exp path left vctrs with
                           | EVar e, b -> e, b
                           | _, _ -> failwith "left of assignment should be variable"
                           end
           in
-          
+
           bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
 
         | Decl (id, (ty, expn)) -> 

@@ -513,6 +513,28 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
       end
     | _ -> raise @@ TypeFailure ("Projection source is not a struct", lhs.loc)
     end
+  | HDerefValue (loc_exp) ->
+    begin match interp_exp env loc_exp with
+    | env, VLoc (Some i) ->
+      begin match v with
+      | VInt n -> Vcylib.heap_set i n (Vcylib.heap_get_next i); env
+      | _ -> raise @@ TypeFailure ("heap->value write expects int on RHS", loc)
+      end
+    | _, VLoc None -> raise @@ ValueFailure ("heap->value write to null location", loc)
+    | _ -> raise @@ TypeFailure ("heap->value LHS does not evaluate to a location", loc)
+    end
+  | HDerefNext (loc_exp) ->
+    begin match interp_exp env loc_exp with
+    | env, VLoc (Some i) ->
+      let cur_val = Vcylib.heap_get_value i in
+      begin match v with
+      | VLoc next_opt -> Vcylib.heap_set i cur_val next_opt; env
+      | VNull _       -> Vcylib.heap_set i cur_val None;     env
+      | _ -> raise @@ TypeFailure ("heap->next write expects loc on RHS", loc)
+      end
+    | _, VLoc None -> raise @@ ValueFailure ("heap->next write to null location", loc)
+    | _ -> raise @@ TypeFailure ("heap->next LHS does not evaluate to a location", loc)
+    end
   | _ -> raise @@ TypeFailure ("assignment LHS", loc)
 
 and interp_stmt_while (env : env) (loc : Range.t) (cnd : exp node) (body : block node) : env * value option =
