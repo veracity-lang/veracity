@@ -42,11 +42,45 @@ let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servoi
 
 
 let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
-  let varnames = heap_model_vars @ List.map fst (get_stypes em_vars) in
-  let exp_list = (List.map 
-    (fun n -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n)))
-  varnames) in
-  sexp_of_sexp_list exp_list
+  let loc_vars, other_vars = List.partition (fun ((_, ty), _) -> ty = TLoc) em_vars in
+  let loc_varnames   = List.map (fun ((id, _), _) -> id) loc_vars in
+  let other_varnames = List.concat_map (fun ((id,_),ety) -> List.map fst (compile_ety_to_sty id ety)) other_vars in
+
+  (* The bijection is determined by the tloc program variables:
+       null  -> null
+       v     -> v_new   for each tloc var v
+       other -> other   (identity for untracked locations)
+     Encoded as a quantifier-free ITE chain. *)
+  let apply_bij x =
+    let with_locs = List.fold_right (fun v acc ->
+      EITE (EBop (Eq, x, EVar (Var v)), EVar (VarPost v), acc)
+    ) loc_varnames x in
+    EITE (EBop (Eq, x, smt_negone ()), smt_negone (), with_locs)
+  in
+
+  (* heap_alloc: same number of allocations in both orders *)
+  let alloc_eq = EBop (Eq, EVar (Var "heap_alloc"), EVar (VarPost "heap_alloc")) in
+
+  (* For each tloc variable v: heap_value[v] = heap_value_new[v_new] *)
+  let value_eqs = List.map (fun n ->
+    EBop (Eq,
+      EFunc ("select", [EVar (Var "heap_value"); EVar (Var n)]),
+      EFunc ("select", [EVar (VarPost "heap_value"); EVar (VarPost n)]))
+  ) loc_varnames in
+
+  (* For each tloc variable v: apply_bij(heap_next[v]) = heap_next_new[v_new] *)
+  let next_eqs = List.map (fun n ->
+    EBop (Eq,
+      apply_bij (EFunc ("select", [EVar (Var "heap_next"); EVar (Var n)])),
+      EFunc ("select", [EVar (VarPost "heap_next"); EVar (VarPost n)]))
+  ) loc_varnames in
+
+  (* other program variables: plain equality *)
+  let other_eqs = List.map (fun n ->
+    EBop (Eq, EVar (Var n), EVar (VarPost n))
+  ) other_varnames in
+
+  sexp_of_sexp_list ([alloc_eq] @ value_eqs @ next_eqs @ other_eqs)
 
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
@@ -522,9 +556,24 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let ret = [(Smt.Var "result", updated_return_type)] in 
     let post = generate_method_spec_postcondition genv m.body.elt in
     let terms = compile_block_to_term_list m.body.elt in 
-    let method_spec = { name = m.mname; args = args; ret = ret; 
-                        pre = !pre;
-                        (* pre = EConst (CBool true); *)
+    let heap_inv = EBop (Gte, EVar (Var "heap_alloc"), EConst (CInt 0)) in
+    let loc_varnames = List.filter_map (fun ((id, ty), _) -> if ty = TLoc then Some id else None) !gstates in
+    (* Each loc var address is a valid allocated cell: 0 <= v < heap_alloc *)
+    let loc_valid = List.concat_map (fun v -> [
+      EBop (Gte, EVar (Var v), EConst (CInt 0));
+      EBop (Lt, EVar (Var v), EVar (Var "heap_alloc"))
+    ]) loc_varnames in
+    (* Closed-world: each loc var's next pointer is null or another tracked loc var.
+       This prevents the solver from routing next pointers through fresh allocation
+       addresses, which would cause the bijection check in states_equal to fail. *)
+    let valid_next_targets = smt_negone () :: List.map (fun u -> EVar (Var u)) loc_varnames in
+    let heap_closed = List.map (fun v ->
+      ELop (Or, List.map (fun tgt ->
+        EBop (Eq, EFunc ("select", [EVar (Var "heap_next"); EVar (Var v)]), tgt)
+      ) valid_next_targets)
+    ) loc_varnames in
+    let method_spec = { name = m.mname; args = args; ret = ret;
+                        pre = ELop (And, ([!pre; heap_inv] @ loc_valid @ heap_closed));
                         post = post; terms = terms} in
 
     terms_list := [];
@@ -550,7 +599,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   
   let pre, post = generate_spec_pre_post_condition pre post in
 
-  let preamble = None in 
+  let preamble = None in
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
               precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in

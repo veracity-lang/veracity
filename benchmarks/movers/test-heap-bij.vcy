@@ -1,0 +1,15 @@
+/*
+ * ./vcy.exe infer ../benchmarks/movers/heap.vcy --prover cvc5 -ae
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+    tloc la = new { 0 {} null };
+    tloc lb = new { 0 {} null };
+    /* writes to different cells commute */
+    commute _ {
+        { la = new { 1 {} null }; }
+        { lb = new { 2 {} null }; }
+    }
+    return 0;
+}

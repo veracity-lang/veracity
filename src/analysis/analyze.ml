@@ -123,6 +123,8 @@ let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node lis
   | CommuteVarRM -> 
     Servois2.Solve.mode := Servois2.Solve.RightMover
   | _ -> () end;
+    Servois2.Util.diagram := true;
+    Servois2.Util.dump_queries := true;
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
     Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
     (* Put solver back to normal Bowtie mode, regardless *)

@@ -7,6 +7,8 @@ int main(int argc, string[] argv) {
 
     tloc l1 = new { x {} null };
     tloc l2 = new { y {} null };
+    tloc la = new { 0 {} null };
+    tloc lb = new { 0 {} null };
 
     /* true - writes to a cell commutes with assign null */
     commute _ {
@@ -16,14 +18,20 @@ int main(int argc, string[] argv) {
 
     /* writes to different cells commute */
     commute _ {
-        { l1 = new { 1 {} null }; }
-        { l2 = new { 2 {} null }; }
+        { la = new { 1 {} null }; }
+        { lb = new { 2 {} null }; }
     }
 
     /* write to l1 is a right mover relative to a write to l2 */
     commute_right _ {
         { l1 = new { 1 {} null }; }
         { l2 = new { 2 {} null }; }
+    }
+
+    /* allocating identical cells to identical locations */
+    commute _ { /* true */
+        { l1 = new { 1 {} null }; }
+        { l1 = new { 1 {} null }; }
     }
 
     /* write to same cell then read: right mover but not left */
@@ -38,13 +46,13 @@ int main(int argc, string[] argv) {
     }
 
     /* read from l1 commutes with an independent write to l2 */
-    commute _ {
+    commute _ { /* true */
         { x = l1 -> value; }
         { l2 = new { 2 {} null }; }
     }
 
     /* chasing the next pointer: read l1.next into l2, then read l2.val */
-    commute_right _ {
+    commute_right _ { /* false */
         { l2 = l1 -> next; }
         { y = l2 -> value; }
     }
