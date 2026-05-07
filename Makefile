@@ -1,4 +1,4 @@
-VCY := ./vcy.exe
+VCY := ./vcy
 
 INFERRED_TESTS := $(filter-out benchmarks/inferred/tmp.vcy, \
     $(wildcard benchmarks/inferred/*.vcy))
@@ -18,7 +18,8 @@ MOVERS_INFER_TESTS := $(filter-out $(MOVERS_INTERP_TESTS), \
 
 all:
 	make -C src/parallel
-	cd src && dune build && cp vcy.exe ..
+	cd src && dune build
+	install -m 755 src/_build/default/run.exe vcy
 
 test: all
 	@pass=0; fail=0; \

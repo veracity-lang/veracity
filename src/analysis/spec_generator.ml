@@ -24,6 +24,48 @@ let heap_model_vars = [ "heap_alloc"; "heap_value"; "heap_next" ]
 
 let pre = ref (EConst (CBool true))
 
+(* Set to false when none of the commute-block methods use heap operations.
+ * When false, heap variables are kept in spec.state but their postcondition
+ * equalities are emitted as flat top-level conjuncts (outside any ITE),
+ * which lets the SMT solver find the array witnesses trivially. *)
+let use_heap = ref true
+
+let rec exp_uses_heap (e : exp node) = match e.elt with
+  | HeapAlloc _ | HeapValue _ | HDerefValue _ | HDerefNext _ -> true
+  | Bop (_, e1, e2)       -> exp_uses_heap e1 || exp_uses_heap e2
+  | Uop (_, e1)           -> exp_uses_heap e1
+  | Ternary (g, t, f)     -> exp_uses_heap g  || exp_uses_heap t || exp_uses_heap f
+  | Index (e1, e2)        -> exp_uses_heap e1 || exp_uses_heap e2
+  | Call (_, es) | CallRaw (_, es) -> List.exists exp_uses_heap es
+  | CArr (_, es)          -> List.exists exp_uses_heap es
+  | Proj (e1, _) | NewArr (_, e1) -> exp_uses_heap e1
+  | _                     -> false
+
+and stmt_uses_heap (s : stmt node) = match s.elt with
+  | Assn (e1, e2)         -> exp_uses_heap e1 || exp_uses_heap e2
+  | Decl (_, (_, e))      -> exp_uses_heap e
+  | Ret (Some e)          -> exp_uses_heap e
+  | Ret None              -> false
+  | SCallRaw (_, es)      -> List.exists exp_uses_heap es
+  | SCall (_, es)         -> List.exists exp_uses_heap es
+  | If (e, b1, b2)        -> exp_uses_heap e || block_uses_heap b1.elt || block_uses_heap b2.elt
+  | While (e, b)          -> exp_uses_heap e || block_uses_heap b.elt
+  | For (vds, eo, sno, b) ->
+      List.exists (fun (_, (_, e)) -> exp_uses_heap e) vds
+      || (match eo  with None -> false | Some e -> exp_uses_heap e)
+      || (match sno with None -> false | Some s -> stmt_uses_heap s)
+      || block_uses_heap b.elt
+  | Raise e | Assert e | Assume e | Require e -> exp_uses_heap e
+  | Commute (_, _, bls, cpre, cpost) ->
+      List.exists (fun b -> block_uses_heap b.elt) bls
+      || (match cpre  with None -> false | Some e -> exp_uses_heap e)
+      || (match cpost with None -> false | Some e -> exp_uses_heap e)
+  | Havoc _ -> false
+
+and block_uses_heap b = List.exists stmt_uses_heap b
+
+let blocks_use_heap blks = List.exists (fun b -> block_uses_heap b.elt) blks
+
 let sexp_of_sexp_list = function
   | [e] -> e
   | es -> ELop(And, es)
@@ -534,8 +576,9 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | _ -> ()
     
   ) !gstates;
+  if !use_heap then
   List.iter (
-    fun [@warning "-8"] id -> 
+    fun [@warning "-8"] id ->
           ety_init_list := !ety_init_list @ [init_mangle_id id];
           if not (Hashtbl.mem variable_ctr_list id) then
           Hashtbl.add variable_ctr_list id (ref 1) else
@@ -551,12 +594,18 @@ let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
     let block_to_exp, local_variable_ctr_list = (compile_block_to_smt_exp genv b) in
 
     let remain_variables = ref [] in
-    List.iter (fun ((id,_),_) -> 
+    List.iter (fun ((id,_),_) ->
             if not (Hashtbl.mem variable_ctr_list id)
-            then 
+            then
             remain_variables := !remain_variables @ [Smt.EBop (Eq, EVar (VarPost id), EVar (Var id))]
     ) !gstates;
-    ELop (And, block_to_exp :: !remain_variables @ [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
+    let heap_passthrough =
+      if !use_heap then []
+      else List.map (fun id ->
+        Smt.EBop (Eq, EVar (VarPost id), EVar (Var id))
+      ) heap_model_vars
+    in
+    ELop (And, block_to_exp :: !remain_variables @ heap_passthrough @ [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
 
 let generate_spec_pre_post_condition pre post =
   let vctrs = variable_ctr_list in
@@ -609,6 +658,9 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
+
+  let has_loc_vars = List.exists (fun ((_, ty), _) -> ty = TLoc) embedding_vars in
+  use_heap := has_loc_vars || blocks_use_heap blks;
 
   let predicates = generate_spec_predicates embedding_vars in
   let state_equal = generate_spec_statesEqual embedding_vars in

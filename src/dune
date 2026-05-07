@@ -11,10 +11,8 @@
  
 (executable
  (name run)
- (public_name vcyrun)
  (modules run)
- (libraries vcy)
- (promote (until-clean)))
+ (libraries vcy))
 
 (env
  (dev

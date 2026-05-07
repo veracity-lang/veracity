@@ -1,0 +1,35 @@
+int main(int argc, string[] argv) {
+	int c = int_of_string(argv[1]);
+    int error = 0;
+
+    /* Should not work b/c pre condition admits c=0 */
+	commute_left _ {
+		pre: (c>=0)
+		/*Inc:*/ { c = c + 1; }
+		/*Dec:*/ { if (c > 0) { c = c - 1; } }
+	}
+
+    /* Should not work b/c pre condition admits c=0 */
+	commute_right _ {
+		pre: (c>=0)
+		/*Inc:*/ { c = c + 1; }
+		/*Dec:*/ { if (c > 0) { c = c - 1; } }
+	}
+
+    /* Should work */
+	commute_left _ {
+		pre: (c>0)
+		/*Inc:*/ { c = c + 1; }
+		/*Dec:*/ { if (c > 0) { c = c - 1; } }
+	}
+
+    /* Should work */
+	commute_right _ {
+		pre: (c>0)
+		/*Inc:*/ { c = c + 1; }
+		/*Dec:*/ { if (c > 0) { c = c - 1; } }
+	}
+
+	print(string_of_int(c) ^ "\n");
+	return 0;
+}
