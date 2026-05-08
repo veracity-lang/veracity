@@ -146,6 +146,22 @@ let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node lis
   Util.pending_subdir := commute_subdir;
   exp_of_phi phi embedding
 
+let rec block_has_havoc (b : block) =
+  List.exists stmt_has_havoc b
+and stmt_has_havoc (s : stmt node) =
+  match s.elt with
+  | Havoc _ -> true
+  | If (_, b1, b2) -> block_has_havoc b1.elt || block_has_havoc b2.elt
+  | While (_, b)   -> block_has_havoc b.elt
+  | For (_, _, _, b) -> block_has_havoc b.elt
+  | Commute (_, _, bls, _, _) -> List.exists (fun b -> block_has_havoc b.elt) bls
+  | _ -> false
+
+let prog_has_havoc (prog : prog) =
+  List.exists (function
+    | Gmdecl m -> block_has_havoc m.elt.body.elt
+    | _ -> false) prog
+
 let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in

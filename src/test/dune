@@ -6,3 +6,10 @@
     (modules test)
     (action (setenv LD_LIBRARY_PATH .. (run %{test})))
 )
+
+(test
+    (name api_test)
+    (libraries ounit2 vcy)
+    (modules api_test)
+    (action (setenv LD_LIBRARY_PATH .. (run %{test})))
+)

@@ -150,10 +150,19 @@ let process_ll_file path file =
 (* oat pipeline ------------------------------------------------------------- *)
 
 let parse_oat_file filename =
-  let lexbuf = read_file filename |> 
+  let lexbuf = read_file filename |>
                Lexing.from_string
   in
-  Vcy_lexer.reset_lexbuf filename 0 lexbuf;  (* set the filename *)  
+  Vcy_lexer.reset_lexbuf filename 0 lexbuf;  (* set the filename *)
+  try
+    Vcy_parser.prog Vcy_lexer.token lexbuf
+  with
+  | Vcy_parser.Error -> failwith @@ Printf.sprintf "Parse error at: %s"
+      (Range.string_of_range (Range.lex_range lexbuf))
+
+let parse_oat_string ?(source_name="<string>") src =
+  let lexbuf = Lexing.from_string src in
+  Vcy_lexer.reset_lexbuf source_name 0 lexbuf;
   try
     Vcy_parser.prog Vcy_lexer.token lexbuf
   with

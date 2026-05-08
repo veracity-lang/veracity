@@ -478,6 +478,8 @@ module RunInfer : Runner = struct
     Interp.emit_quiet := !quiet;
 
     let prog = Driver.parse_oat_file prog_name in
+    if Analyze.prog_has_havoc prog && not !use_ae then
+      failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     let env = Interp.initialize_env prog true in
     let open Ast in
     if !output_file != "" then begin
@@ -587,6 +589,8 @@ module RunVerify : Runner = struct
     Interp.print_cond := !cond;
 
     let prog = Driver.parse_oat_file prog_name in
+    if Analyze.prog_has_havoc prog && not !use_ae then
+      failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     let env = Interp.initialize_env prog false in
     let dt, _ =
         time_exec @@ fun () -> Interp.verify_phis_of_prog env.g
