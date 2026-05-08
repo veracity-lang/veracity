@@ -16,6 +16,8 @@ MOVERS_INTERP_TESTS := \
 MOVERS_INFER_TESTS := $(filter-out $(MOVERS_INTERP_TESTS), \
     $(wildcard benchmarks/movers/*.vcy))
 
+PREPOST_TESTS := $(wildcard benchmarks/prepost/*.vcy)
+
 all:
 	make -C src/parallel
 	cd src && dune build
@@ -34,6 +36,14 @@ test: all
 	echo "=== benchmarks/verify ==="; \
 	for f in $(VERIFY_TESTS); do \
 		if $(VCY) verify "$$f" --prover cvc5 > /dev/null 2>&1; then \
+			echo "  PASS $$f"; pass=$$((pass+1)); \
+		else \
+			echo "  FAIL $$f"; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	echo "=== benchmarks/prepost ==="; \
+	for f in $(PREPOST_TESTS); do \
+		if $(VCY) infer "$$f" --prover cvc5 > /dev/null 2>&1; then \
 			echo "  PASS $$f"; pass=$$((pass+1)); \
 		else \
 			echo "  FAIL $$f"; fail=$$((fail+1)); \

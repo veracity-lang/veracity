@@ -1,0 +1,75 @@
+/* Commutativity with postconditions.
+ *
+ * These pairs always commute (both orderings yield the same state),
+ * but the postcondition places an additional constraint on the final
+ * state.  The inferred condition is the weakest precondition of the
+ * combined (commute + postcondition) requirement.
+ *
+ * Run: ./vcy infer benchmarks/prepost/post.vcy --prover cvc5
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+
+    /* Independent increments always commute.
+     * Post x > 0 requires x+1 > 0, i.e. x >= 0.
+     * Expected: x+1 > 0  (equivalently x >= 0) */
+    commute _ {
+        pre: (true)
+        { x = x + 1; }
+        { y = y + 1; }
+        post: (x > 0)
+    }
+
+    /* Same pair, but pre already ensures the postcondition.
+     * Given x >= 0, x+1 > 0 is guaranteed.
+     * Expected: true */
+    commute _ {
+        pre: (x >= 0)
+        { x = x + 1; }
+        { y = y + 1; }
+        post: (x > 0)
+    }
+
+    /* Both blocks write constants; they always commute.
+     * Post x == y: final x=1, y=1, so 1==1 always holds.
+     * Expected: true */
+    commute _ {
+        pre: (true)
+        { x = 1; }
+        { y = 1; }
+        post: (x == y)
+    }
+
+    /* Both blocks write different constants; they always commute.
+     * Post x == y: final x=1, y=2, so 1==2 never holds.
+     * Expected: false */
+    commute _ {
+        pre: (true)
+        { x = 1; }
+        { y = 2; }
+        post: (x == y)
+    }
+
+    /* Additive inverses always commute (both give x → x).
+     * Post x > 0 requires the original x > 0.
+     * Expected: x > 0 */
+    commute _ {
+        pre: (true)
+        { x = x + 1; }
+        { x = x - 1; }
+        post: (x > 0)
+    }
+
+    /* Same pair with pre providing the postcondition.
+     * Given x > 0, the result x > 0 is guaranteed.
+     * Expected: true */
+    commute _ {
+        pre: (x > 0)
+        { x = x + 1; }
+        { x = x - 1; }
+        post: (x > 0)
+    }
+
+    return 0;
+}

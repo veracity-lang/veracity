@@ -1,0 +1,85 @@
+/* Hoare-logic-style tests: one commute block is empty, so both
+ * orderings are trivially identical.  The inferred condition is
+ * exactly the weakest precondition of the non-trivial block w.r.t.
+ * the given postcondition.
+ *
+ * Run: ./vcy infer benchmarks/prepost/hoare.vcy --prover cvc5
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+
+    /* {x >= 0} x := x+1 {x > 0}
+     * Pre already guarantees x+1 > 0.
+     * Expected: true */
+    commute _ {
+        pre: (x >= 0)
+        { x = x + 1; } { }
+        post: (x > 0)
+    }
+
+    /* {?} x := x+1 {x > 0}
+     * x+1 > 0  iff  x >= 0.
+     * Expected: !(0 > x) */
+    commute _ {
+        pre: (true)
+        { x = x + 1; } { }
+        post: (x > 0)
+    }
+
+    /* {x > 0} x := x-1 {x >= 0}
+     * Pre guarantees x-1 >= 0.
+     * Expected: true */
+    commute _ {
+        pre: (x > 0)
+        { x = x - 1; } { }
+        post: (x >= 0)
+    }
+
+    /* {?} x := x-1 {x >= 0}
+     * x-1 >= 0  iff  x >= 1  iff  x > 0.
+     * Expected: x > 0 */
+    commute _ {
+        pre: (true)
+        { x = x - 1; } { }
+        post: (x >= 0)
+    }
+
+    /* {?} x := 5 {x > 0}
+     * 5 > 0 always.
+     * Expected: true */
+    commute _ {
+        pre: (true)
+        { x = 5; } { }
+        post: (x > 0)
+    }
+
+    /* {?} x := 5 {x > 10}
+     * 5 > 10 never.
+     * Expected: false */
+    commute _ {
+        pre: (true)
+        { x = 5; } { }
+        post: (x > 10)
+    }
+
+    /* {y > 0} x := y {x > 0}
+     * Pre guarantees y > 0, so x := y yields x > 0.
+     * Expected: true */
+    commute _ {
+        pre: (y > 0)
+        { x = y; } { }
+        post: (x > 0)
+    }
+
+    /* {?} x := y {x > 0}
+     * After x := y, x > 0  iff  y > 0.
+     * Expected: y > 0 */
+    commute _ {
+        pre: (true)
+        { x = y; } { }
+        post: (x > 0)
+    }
+
+    return 0;
+}
