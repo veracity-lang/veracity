@@ -174,13 +174,14 @@ and interp_binop (env : env) (op : binop) (loc : Range.t) (e1 : exp node) (e2 : 
   | VInt v1,  VInt v2  -> env, interp_binop_int op loc v1 v2
 
   | VBool v1, VBool v2 ->
-    let f = 
+    let f =
       match op with
-      | Eq  -> ( = )
-      | Neq -> ( <> )
-      | And -> ( && )
-      | Or  -> ( || )
-      | _   -> raise @@ TypeFailure ("bool binop operator", loc)
+      | Eq      -> ( = )
+      | Neq     -> ( <> )
+      | And     -> ( && )
+      | Or      -> ( || )
+      | Implies -> (fun a b -> not a || b)
+      | _       -> raise @@ TypeFailure ("bool binop operator", loc)
     in env, VBool (f v1 v2)
 
   | VStr v1, VStr v2   ->
@@ -321,6 +322,8 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
     | MethodL (id, {pure;func;_}) ->
       func (env,args)
     end
+  | Exists _ ->
+    raise @@ NotImplemented "exists is only supported in pre/post conditions, not in executable code"
   | Bop (op, en1, en2) ->
     interp_binop env op loc en1 en2
   | Uop (op, en)       ->
@@ -968,6 +971,7 @@ let cook_calls (g : global_env) : global_env =
       | CInt _ | CStr _ | NewHashTable _ -> e.elt
       | HDerefValue l -> HDerefValue(cook_calls_of_exp l)
       | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
+      | Exists (id, ty, body) -> Exists (id, ty, cook_calls_of_exp body)
       | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))
     in
     node_up e e'

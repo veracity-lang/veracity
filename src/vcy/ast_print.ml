@@ -27,6 +27,7 @@ module AstPP = struct
   | IAnd -> 30
   | IOr  -> 20
   | Concat -> 10
+  | Implies -> 5
 
   let prec_of_unop = function _ -> 110
 
@@ -59,10 +60,11 @@ module AstPP = struct
   | Neq    -> "!="
   | And    -> "&&"
   | Or     -> "||"
-  | IAnd   -> "&"
-  | IOr    -> "|"
-  | Concat -> "^"
-  | Mod    -> "%"
+  | IAnd    -> "&"
+  | IOr     -> "|"
+  | Concat  -> "^"
+  | Mod     -> "%"
+  | Implies -> "==>"
 
   let print_id_aux fmt (x:id) = pp_print_string fmt x
 
@@ -170,8 +172,13 @@ module AstPP = struct
           print_exp_aux this_level fmt e2;
           pps "}";
           pp_close_box fmt () 
-      | HDerefNext (l1) -> pps "TODO:Claude-Next" 
+      | HDerefNext (l1) -> pps "TODO:Claude-Next"
       | HDerefValue (l1) -> pps "TODO:Claude-Value"
+      | Exists (id, ty, body) ->
+          pp_open_box fmt 0;
+          pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
+          print_exp_aux 0 fmt body;
+          pp_close_box fmt ()
       | _ -> failwith ("print_exp_aux: match failed for ")
 
     end; if this_level < level then pps ")"
@@ -448,8 +455,9 @@ module AstML = struct
     | Shl    -> "Shl" 
     | Shr    -> "Shr" 
     | Sar    -> "Sar" 
-    | Concat -> "Concat"
-    | Mod    -> "Mod"
+    | Concat  -> "Concat"
+    | Mod     -> "Mod"
+    | Implies -> "Implies"
 
   let string_of_unop : unop -> string = function
     | Neg    -> "Neg"
@@ -502,8 +510,10 @@ module AstML = struct
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
       | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
-      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1) 
-      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1) 
+      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1)
+      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1)
+      | Exists (id, ty, body) ->
+          sp "Exists (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
     end
 
   and string_of_exp (e:exp node) : string = 

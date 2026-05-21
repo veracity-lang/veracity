@@ -82,6 +82,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token BOR      /* [|] */
 
 %token FUNC      /* => */
+%token DARROW    /* ==> implication */
+%token EXISTS    /* exists quantifier */
 %token RAISE
 %token PURE
 
@@ -92,6 +94,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 
 %token UNDERSCORE
 
+%right DARROW
 %left BOR
 %left BAND
 %left LOR
@@ -187,6 +190,7 @@ ty:
   | NEQ {Neq}
   | LAND {And}
   | LOR {Or}
+  | DARROW {Implies}
   | BAND {IAnd}
   | BOR {IOr}
   | PERCENT {Mod}
@@ -234,7 +238,13 @@ basic_exp:
   | LPAREN e=exp RPAREN { e }
   | l=locexp ARROW HEAPVALUE_NEXT  { loc $startpos $endpos @@ HDerefNext  ( l ) }
   | l=locexp ARROW HEAPVALUE_VALUE { loc $startpos $endpos @@ HDerefValue ( l ) }
-  
+  | EXISTS id=IDENT DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Exists(id, TInt, body) }
+  | EXISTS id=IDENT COLON t=ty DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Exists(id, t, body) }
+
 atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | NULL                { loc $startpos $endpos @@ CNull TLoc }

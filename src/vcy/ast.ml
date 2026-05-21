@@ -42,6 +42,7 @@ type binop =
 
 | Lt   | Lte | Gt | Gte
 | And  | Or
+| Implies
 | IAnd | IOr (* Bitwise ops *)
 | Shl  | Shr | Sar
 | Concat
@@ -105,6 +106,7 @@ type exp =
 | HeapValue of exp node * exp node
 | HDerefValue of exp node
 | HDerefNext of exp node
+| Exists of id * ty * exp node
 
 and tmethod =
   { pure : bool
@@ -481,6 +483,7 @@ let smt_bop_to_binop (op: Smt.bop) : binop =
   | Smt.Gt -> Gt
   | Smt.Lte -> Lte
   | Smt.Gte -> Gte
+  | Smt.Imp -> Implies
   | _ -> failwith "undefined op"
 
 let smt_lop_to_binop (op: Smt.lop) : binop =

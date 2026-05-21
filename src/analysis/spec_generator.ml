@@ -39,6 +39,7 @@ let rec exp_uses_heap (e : exp node) = match e.elt with
   | Call (_, es) | CallRaw (_, es) -> List.exists exp_uses_heap es
   | CArr (_, es)          -> List.exists exp_uses_heap es
   | Proj (e1, _) | NewArr (_, e1) -> exp_uses_heap e1
+  | Exists (_, _, body)   -> exp_uses_heap body
   | _                     -> false
 
 and stmt_uses_heap (s : stmt node) = match s.elt with
@@ -145,6 +146,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
   let rec get_exp_term (e: exp node) : sexp * ty = 
       match e.elt with
       | CNull _ -> terms := !terms @ [(smt_negone(), TInt)]; (smt_negone(), TInt)
+      | CBool b -> terms := !terms @ [(Smt.EConst (CBool b), TBool)]; (Smt.EConst (CBool b), TBool)
       | CInt i -> terms := !terms @ [(Smt.EConst (CInt (Int64.to_int i)), TInt)]; (Smt.EConst (CInt (Int64.to_int i)), TInt)
       | CStr str -> terms := !terms @ [(Smt.EConst (CString str), TStr)]; (Smt.EConst (CString str), TStr)
       | Id id ->  
@@ -179,12 +181,12 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
 
           let ret_typ_of_op = match op with
           | Add | Sub | Mul | Mod | Div | Exp -> ty1
-          | Eq | Neq | Lt | Lte | Gt | Gte | And | Or -> TBool
+          | Eq | Neq | Lt | Lte | Gt | Gte | And | Or | Implies -> TBool
           | _ -> failwith "unknown op type"
           in
 
           begin match op with
-          | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte -> 
+          | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte ->
             if (List.mem (t1, ty1) !terms && List.mem (t2, ty2) !terms) then
                 terms := !terms @ [(EBop (bop_to_servoisBop op, t1, t2), ret_typ_of_op)];
             (EBop (bop_to_servoisBop op, t1, t2), ret_typ_of_op)
@@ -192,10 +194,12 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
             if (List.mem (t1, ty1) !terms && List.mem (t2, ty2) !terms) then
                 terms := !terms @ [(ELop (bop_to_servoisLop op, [t1; t2]), ret_typ_of_op)];
             (ELop (bop_to_servoisLop op, [t1; t2]), ret_typ_of_op)
-          | Neq -> 
+          | Neq ->
             if (List.mem (t1, ty1) !terms && List.mem (t2, ty2) !terms) then
                 terms := !terms @ [(EUop (Not, EBop (bop_to_servoisBop Eq, t1, t2)), ret_typ_of_op)];
             (EUop (Not, EBop (bop_to_servoisBop Eq, t1, t2)), ret_typ_of_op)
+          | Implies ->
+            (EBop (Imp, t1, t2), TBool)
           | _ -> failwith "unknown op type"
           end
       | Uop (op, e) -> 
@@ -222,6 +226,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         (t2, typ2) (* TODO: make sure if it's enough to return *)
 
       | Call (MethodL (id, {pc=Some pc;_}), el) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
+      | Exists (_, _, body) -> get_exp_term body
       | _ -> failwith @@ sp "get_exp_terms: undefined exp: %s" @@ AstML.string_of_exp e
   in
   let _ = get_exp_term e in
@@ -317,18 +322,24 @@ let reset_to_local_variable_ctrs (old_vctrs : (string * int) list) (new_vctrs : 
   ) new_vctrs;
   new_vctrs
 
-let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int) list = 
+let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int) list =
   let temp = ref [] in
   Hashtbl.iter (fun id -> fun index -> temp := !temp @ [(id, !index)] ) htbl;
   ! temp
- 
-let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist = 
+
+(* Tracks variables bound by 'exists' so they bypass version-mangling in Id. *)
+let bound_vars : (string, unit) Hashtbl.t = Hashtbl.create 4
+
+let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist =
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
     | CNull _ -> smt_negone(), []
     | CStr str -> Smt.EConst (CString str), []
-    | Id id -> EVar (Var (set_variable_id id side vctrs indexed)), []
+    | Id id ->
+        if Hashtbl.mem bound_vars id
+        then EVar (Var id), []
+        else EVar (Var (set_variable_id id side vctrs indexed)), []
     | Index (e1,e2) when side == 1 -> 
         let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs in
         let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
@@ -338,12 +349,14 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
 
         begin match op with
-        | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte -> 
+        | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte ->
             EBop (bop_to_servoisBop op, rtn1, rtn2),  binds1 @ binds2
         | And | Add | Or ->
             ELop (bop_to_servoisLop op, [rtn1; rtn2]),  binds1 @ binds2
         | Neq ->
             EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2
+        | Implies ->
+            EBop (Imp, rtn1, rtn2), binds1 @ binds2
         | _ -> failwith @@ sp "undefined op: %s" @@ AstML.string_of_binop op
         end
     | Uop (op, e) -> 
@@ -396,6 +409,12 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
 
     | HeapAlloc( v, l ) ->
         failwith "HeapAlloc - should not have to do this"
+
+    | Exists (id, ty, body) ->
+        Hashtbl.add bound_vars id ();
+        let r, binds = exp_to_smt_exp body side ~indexed vctrs in
+        Hashtbl.remove bound_vars id;
+        EExists ([(Var id, sty_of_ty ty)], r), binds
 
     | _ -> failwith @@ sp "exp_to_smt_exp: undefined exp: %s" @@ AstML.string_of_exp e
 
@@ -666,9 +685,22 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let state_equal = generate_spec_statesEqual embedding_vars in
   let state = generate_spec_state embedding_vars in
 
+  (* Seed terms from pre/post annotations so empty-block commute queries
+     (e.g. subsumption checks) still provide meaningful candidates. *)
+  let pre_post_terms =
+    let extract = function
+      | None -> []
+      | Some e -> List.map (fun (smt, ty) -> (smt, sty_of_ty ty)) (get_exp_terms e)
+    in
+    extract pre @ extract post
+  in
+
   let mdecls = List.map create_dummy_method blks in
-  let methods = List.map (compile_method_to_methodSpec genv) mdecls in
-  
+  let methods = List.map (fun m ->
+      terms_list := pre_post_terms;
+      compile_method_to_methodSpec genv m
+  ) mdecls in
+
   let pre, post = generate_spec_pre_post_condition pre post in
 
   let preamble = None in

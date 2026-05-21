@@ -49,7 +49,7 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
     | CBool b -> CBool b 
     | CString s -> CStr s 
     end
-  | EBop (bop, exp1, exp2) -> 
+  | EBop (bop, exp1, exp2) ->
     Bop (smt_bop_to_binop bop, exp_node exp1, exp_node exp2)
   | EUop (uop, exp) -> 
     Uop (smt_uop_to_unop uop, exp_node exp)

@@ -1,36 +1,132 @@
-/* Quotient right-mover: reading a shared variable.
+/* Quotient analysis of a CAS-based shared counter.
  *
- * Claim: under the precondition (c = v), a read of c is a right mover
- * with respect to any environment step that preserves (c = v).
+ * Three atomic operations are analysed:
+ *   aIncrS    – atomic increment (CAS body, succeeds when c == ctr)
+ *   aDecrS    – atomic decrement (CAS body, succeeds when c == ctr ∧ c != 0)
+ *   aDecrZero – read of ctr (when ctr == 0, returning 0)
  *
- * The environment step is modelled as:
- *   havoc c; assume(c = v);
- * which nondeterministically sets c to any value satisfying c = v,
- * i.e. the environment may re-write c but must stabilise it back to v.
- *
- * Left  ordering:  t = c;  then  havoc c; assume(c = v);
- *   -> t = v  (read before the havoc, c guaranteed v by pre)
- *   -> c = v  (assume restores c)
- *
- * Right ordering:  havoc c; assume(c = v);  then  t = c;
- *   -> c = v  (assume restores c)
- *   -> t = v  (read after the assume)
- *
- * Both orderings yield (t = v, c = v).
- * Expected: true
+ * Variables:
+ *   ctr – shared counter
+ *   c   – thread-local snapshot (from a read of ctr)
+ *   t   – thread-local result variable (models method return value)
  *
  * Run: ./vcy infer benchmarks/quotients/counter.vcy --prover cvc5 -ae
  */
 int main(int argc, string[] argv) {
-    int c = int_of_string(argv[1]);
-    int v = int_of_string(argv[2]);
-    int t = 0;
+    int ctr = int_of_string(argv[1]);
+    int c   = 0;
+    int t   = 0;
 
+    /* ── atom::aIncrS ──────────────────────────────────────────────────── */
+
+    /* 1. Hoare Triple atom::aIncrS
+     *    {c == ctr} CAS(ctr, c, c+1) {∃ v. c == v ∧ ctr == v+1}
+     *    CAS succeeds (pre guarantees c == ctr); ctr is set to c+1, c unchanged.
+     *    Expected: true */
+    commute _ {
+        pre: (c == ctr)
+        { ctr = c + 1; } { }
+        post: (exists v : int . c == v && ctr == v + 1)
+    }
+
+    /* 2. Right Mover atom::aIncrS
+     *    int c = ctr ▶ {c == ctr}
+     *    Reading ctr into c is a right mover under the invariant c == ctr.
+     *    Expected: true */
     commute_right _ {
-        pre:  (c == v)
+        pre:  (c == ctr)
+        { c = ctr; }
+        { havoc ctr; assume(c == ctr); }
+        post: (c == ctr)
+    }
+
+    /* 3. Left Mover atom::aIncrS
+     *    {∃ __old_ctr. c == __old_ctr ∧ ctr == c+1} ◀ return c
+     *    Reading the local c (pre-CAS snapshot) is a left mover.
+     *    Expected: true */
+    commute_left _ {
+        pre:  (ctr == c + 1)
         { t = c; }
-        { havoc c; assume(c == v); }
-        post: (t == v)
+        { havoc ctr; assume(ctr == c + 1); }
+        post: (t == c)
+    }
+
+    /* ── atom::aDecrS ──────────────────────────────────────────────────── */
+
+    /* 4. Hoare Triple atom::aDecrS
+     *    {c == ctr ∧ c != 0} CAS(ctr, c, c-1) {∃ v. c == v ∧ c != 0 ∧ ctr == v-1}
+     *    CAS succeeds; ctr is set to c-1, c unchanged, c != 0 preserved.
+     *    Expected: true */
+    commute _ {
+        pre:  (c == ctr && c != 0)
+        { ctr = c - 1; } { }
+        post: (exists v : int . c == v && c != 0 && ctr == v - 1)
+    }
+
+    /* 5. Subsumption atom::aDecrS
+     *    {true} ⊆ {c != 0 ==> c == ctr ∧ c != 0}
+     *    Encoded as implication in post; pre is true.
+     *    Expected: c == ctr */
+    /*commute _ {
+        pre:  (true)
+        { } { }
+        post: (c != 0 ==> c == ctr && c != 0)
+    }*/
+    assert(c != 0 ==> c == ctr && c != 0);
+
+    /* 6. Right Mover atom::aDecrS
+     *    int c = ctr ▶ {c == ctr ∧ c != 0}
+     *    Reading ctr into c is a right mover under the invariant c == ctr ∧ c != 0.
+     *    Expected: true */
+    commute_right _ {
+        pre:  (c == ctr && c != 0)
+        { c = ctr; }
+        { havoc ctr; assume(c == ctr && c != 0); }
+        post: (c == ctr && c != 0)
+    }
+
+    /* 7. Left Mover atom::aDecrS
+     *    {∃ __old_ctr. c == __old_ctr ∧ c != 0 ∧ ctr == c-1} ◀ return c
+     *    Reading the local c (pre-CAS snapshot) is a left mover.
+     *    Expected: true */
+    commute_left _ {
+        pre:  (c != 0 && ctr == c - 1)
+        { t = c; }
+        { havoc ctr; assume(c != 0 && ctr == c - 1); }
+        post: (t == c)
+    }
+
+    /* ── atom::aDecrZero ───────────────────────────────────────────────── */
+
+    /* 8. Hoare Triple atom::aDecrZero
+     *    {true} int c = ctr {∃ v. v == ctr ∧ c == v}
+     *    Reading ctr establishes c == ctr unconditionally.
+     *    Expected: true */
+    commute _ {
+        pre:  (true)
+        { c = ctr; } { }
+        post: (exists v : int . v == ctr && c == v)
+    }
+
+    /* 9. Subsumption atom::aDecrZero
+     *    {true} ⊆ {c == 0 ==> c == ctr}
+     *    Encoded as implication in post; pre is true.
+     *    Expected: c == ctr */
+    commute _ {
+        pre:  (true)
+        { } { }
+        post: (c == 0 ==> c == ctr)
+    }
+
+    /* 10. Left Mover atom::aDecrZero
+     *    {c == ctr ∧ c == 0} ◀ return 0
+     *    Returning the constant 0 is a left mover.
+     *    Expected: true */
+    commute_left _ {
+        pre:  (c == ctr && c == 0)
+        { t = 0; }
+        { havoc ctr; assume(c == ctr && c == 0); }
+        post: (t == 0)
     }
 
     return 0;
