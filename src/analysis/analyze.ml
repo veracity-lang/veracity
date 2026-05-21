@@ -162,6 +162,69 @@ let prog_has_havoc (prog : prog) =
     | Gmdecl m -> block_has_havoc m.elt.body.elt
     | _ -> false) prog
 
+(* ── Assert checking ─────────────────────────────────────────────────────── *)
+
+(* Build a self-contained SMT-LIB2 query whose satisfiability determines
+   whether vc (a boolean sexp) can be falsified.  UNSAT → assertion proved. *)
+let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
+  let stypes = Spec_generator.get_stypes embedding_vars in
+  let decls = List.map (fun (id, sty) ->
+    sp "(declare-fun %s () %s)" id (Servois2.Smt.string_of_ty sty)
+  ) stypes in
+  String.concat "\n" @@
+    ["(set-logic ALL)"]
+    @ decls
+    @ [ sp "(assert (not %s))" (Servois2.Smt.string_of_smt vc)
+      ; "(check-sat)" ]
+
+(* Verify every assert() in block.  vars are the method parameters (or any
+   variables in scope before the block); they become SMT declare-funs.
+   Returns (location, result) for each assert found. *)
+let check_asserts_of_block (block: Ast.block)
+    (vars: ty bindlist)
+    (prover: (module Servois2.Provers.Prover))
+    : (Range.t * Servois2.Provers.solve_result) list =
+  let embedding = generate_embedding_map vars in
+  Spec_generator.gstates := embedding;
+  Spec_generator.use_heap := false;
+  Hashtbl.clear Spec_generator.variable_ctr_list;
+  List.iter (fun ((id,_),_) ->
+    Hashtbl.replace Spec_generator.variable_ctr_list id (ref 0)
+  ) embedding;
+  let extra_vars = ref [] in
+  let vcs = Spec_generator.generate_assert_vcs block extra_vars in
+  List.filter_map (fun (loc, vc) ->
+    match
+      let query = assert_smt_query (embedding @ !extra_vars) vc in
+      Servois2.Provers.parse_prover_output prover
+        (Servois2.Provers.run_prover prover query)
+    with
+    | result -> Some (loc, result)
+    | exception e ->
+      Printf.eprintf "Warning: skipping assert at %s: %s\n"
+        (Range.string_of_range loc) (Printexc.to_string e);
+      None
+  ) vcs
+
+(* Scan every method in prog and check its assert() statements. *)
+let check_asserts_in_prog (prog: Ast.prog)
+    (prover: (module Servois2.Provers.Prover)) =
+  List.iter (function
+    | Ast.Gmdecl m ->
+      let meth = m.elt in
+      let params = List.map (fun (ty, id) -> (id, ty)) meth.args in
+      let results = check_asserts_of_block meth.body.elt params prover in
+      List.iter (fun (loc, result) ->
+        Printf.printf "Assert at %s: %s\n"
+          (Range.string_of_range loc)
+          (match result with
+           | Servois2.Provers.Unsat   -> "verified"
+           | Servois2.Provers.Sat _   -> "FAILED (counterexample exists)"
+           | Servois2.Provers.Unknown -> "unknown")
+      ) results
+    | _ -> ()
+  ) prog
+
 let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in

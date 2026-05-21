@@ -67,11 +67,6 @@ int main(int argc, string[] argv) {
      *    {true} ⊆ {c != 0 ==> c == ctr ∧ c != 0}
      *    Encoded as implication in post; pre is true.
      *    Expected: c == ctr */
-    /*commute _ {
-        pre:  (true)
-        { } { }
-        post: (c != 0 ==> c == ctr && c != 0)
-    }*/
     assert(c != 0 ==> c == ctr && c != 0);
 
     /* 6. Right Mover atom::aDecrS
@@ -112,11 +107,7 @@ int main(int argc, string[] argv) {
      *    {true} ⊆ {c == 0 ==> c == ctr}
      *    Encoded as implication in post; pre is true.
      *    Expected: c == ctr */
-    commute _ {
-        pre:  (true)
-        { } { }
-        post: (c == 0 ==> c == ctr)
-    }
+    assert(c == 0 ==> c == ctr);
 
     /* 10. Left Mover atom::aDecrZero
      *    {c == ctr ∧ c == 0} ◀ return 0

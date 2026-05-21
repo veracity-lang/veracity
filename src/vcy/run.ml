@@ -467,7 +467,7 @@ module RunInfer : Runner = struct
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
-  let infer_phis prog_name =
+  let infer_phis prog_name prover =
     if !debug then begin
       Printexc.record_backtrace true;
       Interp.debug_display := true;
@@ -481,6 +481,7 @@ module RunInfer : Runner = struct
     if Analyze.prog_has_havoc prog && not !use_ae then
       failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     let env = Interp.initialize_env prog true in
+    Analyze.check_asserts_in_prog prog prover;
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
@@ -523,7 +524,7 @@ module RunInfer : Runner = struct
     end;
     match anons with
     | [prog] ->
-      infer_phis prog;
+      infer_phis prog (get_prover ());
       if html then begin
         match !Util.session_dir with
         | Some sdir ->

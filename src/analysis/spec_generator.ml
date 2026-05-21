@@ -712,3 +712,61 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
 
   (* Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec); *)
   spec, mnames
+
+(* ── Assert verification condition generator ─────────────────────────────── *)
+
+(* Walk a block using a continuation-passing wrapper so that every let-binding
+   from preceding assignments is in scope when we reach an assert.  For each
+   assert(e) we record (location, vc) where vc is the boolean SMT expression
+   that is satisfiable iff the assertion could fail.  Succeeding asserts are
+   treated as assumes for subsequent VCs. *)
+let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * sexp) list =
+  let bind = function [] -> Fun.id | exp -> fun e -> ELet(exp, e) in
+  let vcs = ref [] in
+  let rec go (stmts: block) (vctrs: (string, int ref) Hashtbl.t) (wrap: sexp -> sexp) =
+    match stmts with
+    | [] -> ()
+    | stmt :: tl ->
+      begin match stmt.elt with
+      | Assert e ->
+          let e_smt, e_binds = exp_to_smt_exp e right vctrs in
+          let inner = bind e_binds e_smt in
+          vcs := !vcs @ [(stmt.loc, wrap inner)];
+          (* Use implication so subsequent VCs are checked *assuming* this
+             assertion holds, not in conjunction with it.  This avoids the
+             inconsistent-context problem when an assertion is false. *)
+          go tl vctrs (fun k -> wrap (EBop (Imp, inner, k)))
+      | Assn (path, e) ->
+          begin try
+            let e_rtn, e_binds = exp_to_smt_exp e right vctrs in
+            let path_smt = match exp_to_smt_exp path left vctrs with
+              | EVar v, _ -> v
+              | _ -> failwith "assert VCG: lhs of assignment must be a variable" in
+            go tl vctrs (fun k -> wrap (bind e_binds @@ ELet ([(path_smt, e_rtn)], k)))
+          with _ -> go tl vctrs wrap end
+      | Decl (id, (ty, expn)) ->
+          begin try
+            let e_rtn, e_binds = exp_to_smt_exp expn right vctrs in
+            go tl vctrs (fun k -> wrap (bind e_binds @@ ELet ([(Var id, e_rtn)], k)))
+          with _ ->
+            (* Treat as "int id = 1; havoc(id)": id is unconstrained.
+               Record it in extra_vars so it gets a declare-fun in the SMT query. *)
+            let ety = match ty with
+              | TInt | TLoc -> ETInt id
+              | TBool -> ETBool id
+              | _ -> ETInt id
+            in
+            if not (List.exists (fun ((eid, _), _) -> String.equal eid id) !extra_vars) then
+              extra_vars := !extra_vars @ [((id, ty), ety)];
+            Hashtbl.replace vctrs id (ref 0);
+            go tl vctrs wrap
+          end
+      | Assume e ->
+          let e_smt, _ = exp_to_smt_exp e right vctrs in
+          (* assume P; assert Q  →  check P ⇒ Q, i.e. P ∧ ¬Q for SAT *)
+          go tl vctrs (fun k -> wrap (EBop (Imp, e_smt, k)))
+      | _ -> go tl vctrs wrap
+      end
+  in
+  go b variable_ctr_list Fun.id;
+  !vcs

@@ -1,0 +1,152 @@
+/* Assert verification benchmarks.
+ *
+ * Each function is an independent test group with its own VCG context.
+ * Within a function, a FAILED assert contaminates the context for subsequent
+ * asserts (the failed condition becomes a false assumption), so each function
+ * places at most one FAILED assert and puts it last.
+ *
+ * Run: ./vcy infer benchmarks/vcgen/assert.vcy --prover cvc5
+ *
+ * Expected results are annotated inline.
+ */
+
+/* ── Constant arithmetic ───────────────────────────────────────────────── */
+
+int test_arith_pass(int argc, string[] argv) {
+    int x = 5;
+    int y = 3;
+    assert(x > y);           /* verified: 5 > 3 */
+    assert(x + y == 8);      /* verified: 5 + 3 = 8 */
+    assert(x - y == 2);      /* verified: 5 - 3 = 2 */
+    assert(x * y == 15);     /* verified: 5 * 3 = 15 */
+    return 0;
+}
+
+int test_arith_fail(int argc, string[] argv) {
+    int x = 5;
+    int y = 3;
+    assert(x == y);          /* FAILED: 5 != 3 */
+    return 0;
+}
+
+/* ── Assignment propagation ────────────────────────────────────────────── */
+
+int test_assign_pass(int argc, string[] argv) {
+    int a = 10;
+    a = a + 1;
+    assert(a == 11);         /* verified: 10 + 1 = 11 */
+    return 0;
+}
+
+int test_assign_fail(int argc, string[] argv) {
+    int a = 10;
+    a = a + 1;
+    assert(a == 10);         /* FAILED: a is now 11 */
+    return 0;
+}
+
+/* ── Sequential updates ────────────────────────────────────────────────── */
+
+int test_seq_pass(int argc, string[] argv) {
+    int b = 0;
+    b = b + 1;
+    b = b + 1;
+    b = b + 1;
+    assert(b == 3);          /* verified */
+    return 0;
+}
+
+int test_seq_fail(int argc, string[] argv) {
+    int b = 0;
+    b = b + 1;
+    b = b + 1;
+    b = b + 1;
+    assert(b == 2);          /* FAILED: b = 3 */
+    return 0;
+}
+
+/* ── Assume constrains the proof state ─────────────────────────────────── */
+
+int test_assume_pass(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);   /* havoc: n is unconstrained */
+    assume(n > 0);
+    assert(n > 0);           /* verified: assume establishes n > 0 */
+    return 0;
+}
+
+int test_assume_fail(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);   /* havoc */
+    assume(n > 0);
+    assert(n > 1);           /* FAILED: n could be exactly 1 */
+    return 0;
+}
+
+/* ── Two-variable linear invariant ─────────────────────────────────────── */
+
+int test_sum_preserved(int argc, string[] argv) {
+    int u = 4;
+    int v = 6;
+    assert(u + v == 10);     /* verified */
+    u = u + 1;
+    v = v - 1;
+    assert(u + v == 10);     /* verified: sum preserved by ±1 swap */
+    return 0;
+}
+
+int test_sum_fail(int argc, string[] argv) {
+    int u = 4;
+    int v = 6;
+    u = u + 2;
+    v = v - 1;
+    assert(u + v == 10);     /* FAILED: 6 + 5 = 11, not 10 */
+    return 0;
+}
+
+/* ── Boolean / logical connectives ─────────────────────────────────────── */
+
+int test_bool_pass(int argc, string[] argv) {
+    bool flag = true;
+    assert(flag);            /* verified */
+    return 0;
+}
+
+int test_bool_fail(int argc, string[] argv) {
+    bool flag = true;
+    assert(!flag);           /* FAILED: flag is true */
+    return 0;
+}
+
+/* ── Implication with havoc ─────────────────────────────────────────────── */
+
+int test_implies_pass(int argc, string[] argv) {
+    int p = int_of_string(argv[1]);   /* havoc */
+    int q = int_of_string(argv[2]);   /* havoc */
+    assume(p == q);
+    assert(p == q);          /* verified: assume establishes p == q */
+    return 0;
+}
+
+int test_implies_fail(int argc, string[] argv) {
+    int p = int_of_string(argv[1]);   /* havoc */
+    int q = int_of_string(argv[2]);   /* havoc */
+    assume(p == q);
+    assert(p > q);           /* FAILED: p == q does not imply p > q */
+    return 0;
+}
+
+/* ── Chained assignments with intermediate assertion ───────────────────── */
+
+int test_chain(int argc, string[] argv) {
+    int x = 1;
+    x = x * 2;               /* x = 2 */
+    assert(x == 2);          /* verified */
+    x = x * 2;               /* x = 4 */
+    assert(x == 4);          /* verified */
+    x = x * 2;               /* x = 8 */
+    assert(x == 8);          /* verified */
+    return 0;
+}
+
+int main(int argc, string[] argv) {
+    return 0;
+}
