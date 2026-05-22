@@ -286,6 +286,8 @@ module AstPP = struct
           begin match variant with
             | CommuteVarSeq -> pps "seq"
             | CommuteVarPar -> pps "par"
+            | CommuteVarLM  -> pps "left"
+            | CommuteVarRM  -> pps "right"
           end;
           begin match phi with
             | PhiExp(e) -> pps " ("; print_exp_aux 0 fmt e; pps ") "
