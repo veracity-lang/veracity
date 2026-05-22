@@ -1,6 +1,0 @@
-# dummy
-
-all:
-
-
-clean:
