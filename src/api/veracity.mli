@@ -11,6 +11,7 @@ type options = {
   prover  : [ `CVC4 | `CVC5 | `Z3 ];
   timeout : float option;
   use_ae  : bool;
+  html    : bool;  (** Generate a self-contained HTML report; [infer] returns its path. *)
 }
 
 val default_options : options
@@ -30,8 +31,9 @@ val parse : input -> Ast.prog api_result
 val interp : ?opts:options -> input -> string array -> int64 api_result
 
 (** Infer commutativity conditions; returns the global environment with PhiInf
-    replaced by PhiExp entries. *)
-val infer : ?opts:options -> input -> Ast.global_env api_result
+    replaced by PhiExp entries, and the path to the generated HTML report when
+    [opts.html = true] (None otherwise). *)
+val infer : ?opts:options -> input -> (Ast.global_env * string option) api_result
 
 (** Verify explicit commutativity conditions.  Returns [Ok ()] when all conditions
     are processed (individual condition results are printed to stdout as normal).

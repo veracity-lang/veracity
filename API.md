@@ -40,13 +40,16 @@ type options = {
   prover  : [ `CVC4 | `CVC5 | `Z3 ];
   timeout : float option;
   use_ae  : bool;
+  html    : bool;
 }
 
 val default_options : options
-(* { prover = `CVC5; timeout = None; use_ae = false } *)
+(* { prover = `CVC5; timeout = None; use_ae = false; html = false } *)
 ```
 
 `use_ae` enables forall/exists (AE) mode in Servois2, which is required when the program contains `havoc` statements.
+
+`html` generates a self-contained HTML report in a fresh `/tmp/veracity_*` directory. Only meaningful with `infer`; the path to `index.html` is returned as the second element of the `Ok` tuple.
 
 ### `error`
 
@@ -101,17 +104,17 @@ match Veracity.interp (Veracity.File "benchmarks/movers/counter.vcy") [| "counte
 ### `infer`
 
 ```ocaml
-val infer : ?opts:options -> input -> Ast.global_env api_result
+val infer : ?opts:options -> input -> (Ast.global_env * string option) api_result
 ```
 
-Infers commutativity conditions for every `commute _` block (i.e., blocks whose condition is `PhiInf`). Returns the global environment with each `PhiInf` entry replaced by a `PhiExp` holding the synthesised condition expression.
+Infers commutativity conditions for every `commute _` block (i.e., blocks whose condition is `PhiInf`). Returns the global environment with each `PhiInf` entry replaced by a `PhiExp` holding the synthesised condition expression, paired with the HTML report path when `opts.html = true` (None otherwise).
 
 If the program contains `havoc` statements and `opts.use_ae` is `false`, returns `Error (InferError _)` immediately with a message explaining that AE mode is required.
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5 } in
 match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
-| Ok g ->
+| Ok (g, _) ->
     List.iter (fun (name, _m) ->
       Printf.printf "Method: %s\n" name) g.Ast.methods
 | Error (Veracity.InferError msg) -> Printf.eprintf "Inference failed: %s\n" msg
@@ -123,6 +126,16 @@ match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5; use_ae = true } in
 Veracity.infer ~opts (Veracity.File "my_havoc_program.vcy")
+```
+
+**HTML report.** Generate a self-contained HTML report alongside inference:
+
+```ocaml
+let opts = { Veracity.default_options with prover = `CVC5; html = true } in
+match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
+| Ok (_, Some path) -> Printf.printf "Report: %s\n" path
+| Ok (_, None)      -> assert false
+| Error _           -> ()
 ```
 
 ### `verify`
@@ -176,7 +189,7 @@ let () =
   |} in
 
   match Veracity.infer ~opts (Veracity.Source src) with
-  | Ok _g   -> print_endline "Inference complete."
+  | Ok (_g, _html) -> print_endline "Inference complete."
   | Error (Veracity.InferError msg) ->
       Printf.eprintf "Inference error: %s\n" msg;
       exit 1

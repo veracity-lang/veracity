@@ -83,7 +83,7 @@ let test_infer_hoare _ =
 let test_infer_has_methods _ =
   match Veracity.infer (Veracity.File (bench "benchmarks/prepost/pre.vcy")) with
   | Error _ -> assert_failure "infer returned Error"
-  | Ok g    -> assert_bool "methods non-empty" (g.Ast.methods <> [])
+  | Ok (g, _) -> assert_bool "methods non-empty" (g.Ast.methods <> [])
 
 (* ------------------------------------------------------------------ verify *)
 
