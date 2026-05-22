@@ -857,37 +857,58 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     let bl = List.map (verify_phis_of_block g defs) bl in
     begin match phi with
       | PhiExp e ->
-        if !print_cond then 
+        if !print_cond then
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
+        let commute_subdir = match !Util.session_dir with
+          | None -> None
+          | Some sdir ->
+            let n = !Util.commute_counter in
+            Util.commute_counter := n + 1;
+            let d = Printf.sprintf "%s/commute_%04d" sdir n in
+            Unix.mkdir d 0o755;
+            Servois2.Util.output_dir := Some d;
+            Servois2.Util.query_counter := 0;
+            Servois2.Diagram.diagram_counter := 0;
+            Some d
+        in
         begin match Analyze.verify_of_block e g var bl defs pre post with
-        | Some b, compl -> 
-          let compl_str = 
-            match compl with 
-            | Some true  -> "true" 
-            | Some false -> "false" 
+        | Some b, compl ->
+          let compl_str =
+            match compl with
+            | Some true  -> "true"
+            | Some false -> "false"
             | None       -> "unknown"
           in
-          if not b then begin 
-            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n" 
-              (Range.string_of_range h.loc) 
+          if not b then begin
+            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n"
+              (Range.string_of_range h.loc)
               (AstPP.string_of_exp e)
             else print_string "incorrect\n"
-          end else begin 
+          end else begin
             if not !emit_quiet then
               Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
-                (Range.string_of_range h.loc) 
+                (Range.string_of_range h.loc)
                 (AstPP.string_of_exp e)
                 compl_str
             else Printf.printf "correct\n%s\n" compl_str
           end
-        | None, _ -> 
+        | None, _ ->
           if not !emit_quiet then
-            Printf.printf "Condition at %s unable to verify: %s\n" 
-              (Range.string_of_range h.loc) 
+            Printf.printf "Condition at %s unable to verify: %s\n"
+              (Range.string_of_range h.loc)
               (AstPP.string_of_exp e)
           else print_string "failure\n"
-        end
+        end;
+        Servois2.Util.output_dir := None;
+        (match !Util.session_dir, commute_subdir with
+         | Some _, Some subdir ->
+           Util.commute_records := !Util.commute_records @ [{
+             Util.loc_str   = Range.string_of_range h.loc;
+             Util.condition = AstPP.string_of_exp e;
+             Util.subdir;
+           }]
+         | _ -> ())
       | PhiInf -> () end;
     let s = Commute (var, phi, bl, pre, post) in
     node_app

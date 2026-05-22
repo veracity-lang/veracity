@@ -542,12 +542,13 @@ end
 module RunVerify : Runner = struct
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " verify [<flags>] <vcy program>"
-  
+
   let debug = ref false
   let time_servois = ref false
   let quiet = ref false
   let anons = ref []
-  let cond = ref false 
+  let cond = ref false
+  let generate_html = ref false
 
 
   let anon_fun (v : string) =
@@ -567,6 +568,7 @@ module RunVerify : Runner = struct
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
     ] |>
     Arg.align
 
@@ -609,8 +611,30 @@ module RunVerify : Runner = struct
          use_ae = !use_ae
     } in
     Util.servois2_verify_option := verify_options;
+    let html = !generate_html in
+    if html then begin
+      Servois2.Util.diagram      := true;
+      Servois2.Util.dump_queries := true;
+      let sdir = Html_output.create_session_dir () in
+      Util.session_dir     := Some sdir;
+      Util.commute_counter := 0;
+      Util.commute_records := [];
+      Printf.eprintf "Session directory: %s\n" sdir
+    end;
     match anons with
-    | [prog] -> verify prog
+    | [prog] ->
+      verify prog;
+      if html then begin
+        match !Util.session_dir with
+        | Some sdir ->
+          let out = Html_output.generate
+            ~source_file:prog
+            ~session_dir:sdir
+            ~records:!Util.commute_records
+          in
+          Printf.printf "HTML report: %s\n" out
+        | None -> ()
+      end
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 

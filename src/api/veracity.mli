@@ -35,7 +35,9 @@ val interp : ?opts:options -> input -> string array -> int64 api_result
     [opts.html = true] (None otherwise). *)
 val infer : ?opts:options -> input -> (Ast.global_env * string option) api_result
 
-(** Verify explicit commutativity conditions.  Returns [Ok ()] when all conditions
-    are processed (individual condition results are printed to stdout as normal).
-    Returns [Error (VerifyError _)] only on a runtime/solver exception. *)
-val verify : ?opts:options -> input -> unit api_result
+(** Verify explicit commutativity conditions.  Returns [Ok ((), html_path)] when
+    all conditions are processed; [html_path] is the path to the generated report
+    when [opts.html = true], [None] otherwise. Individual condition results are
+    printed to stdout as normal. Returns [Error (VerifyError _)] only on a
+    runtime/solver exception. *)
+val verify : ?opts:options -> input -> (unit * string option) api_result

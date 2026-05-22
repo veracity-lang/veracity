@@ -127,11 +127,40 @@ let verify ?(opts = default_options) input =
       configure opts;
       let saved_emit = !Interp.emit_inferred_phis in
       Interp.emit_inferred_phis := false;
+      let html_session =
+        if opts.html then begin
+          Servois2.Util.diagram      := true;
+          Servois2.Util.dump_queries := true;
+          let sdir = Html_output.create_session_dir () in
+          Util.session_dir     := Some sdir;
+          Util.commute_counter := 0;
+          Util.commute_records := [];
+          Some (sdir, input)
+        end else None
+      in
       (try
         let env = Interp.initialize_env prog false in
         let _ = Interp.verify_phis_of_prog env.g in
         Interp.emit_inferred_phis := saved_emit;
-        Ok ()
+        let html_path = match html_session with
+          | None -> None
+          | Some (sdir, inp) ->
+            let source_file = match inp with
+              | File path -> path
+              | Source src ->
+                let p = Filename.concat sdir "source.vcy" in
+                let oc = open_out p in
+                output_string oc src;
+                close_out oc;
+                p
+              | Prog _ -> ""
+            in
+            Some (Html_output.generate
+              ~source_file
+              ~session_dir:sdir
+              ~records:!Util.commute_records)
+        in
+        Ok ((), html_path)
        with e ->
          Interp.emit_inferred_phis := saved_emit;
          Error (VerifyError (Printexc.to_string e)))

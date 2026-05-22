@@ -9,7 +9,7 @@ make          # build everything → installs ./vcy
 make clean    # remove build artifacts
 ```
 
-The top-level `Makefile` drives `src/parallel/Makefile` (which selects the right `parallel.ml` implementation) and then `cd src && dune build`, installing `src/_build/default/run.exe` as `./vcy`.
+The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. The benchmark test suite lives in `test.sh` (invoked by `make test`).
 
 ## Tests
 
@@ -54,15 +54,17 @@ Servois2 is a git submodule at `src/servois2`. It is built by the same dune invo
 
 ### Parallelism (`src/parallel/`)
 
-`parallel.mli` defines a two-function interface (`create`, `join`). The `Makefile` in this directory copies either `parallel_singlecore.ml` (Thread-based, default) or `parallel_multicore.ml` (Domain-based, OCaml 5 domains) to `parallel.ml` depending on the running OCaml version. The `parallel_multicore` and `parallel_singlecore` modules are excluded from the main dune library build; only the copied `parallel.ml` is compiled.
+`parallel.mli` defines a two-function interface (`create`, `join`). `src/dune` uses a `(select parallel.ml from (domainslib -> parallel_multicore.ml) (-> parallel_singlecore.ml))` stanza inside `(libraries)` to pick the Domain-based implementation when `domainslib` is available (OCaml 5) and fall back to Thread-based otherwise. `parallel_multicore` and `parallel_singlecore` are excluded from the module list; only the selected `parallel.ml` is compiled.
 
 ### OCaml API (`src/api/`)
 
 `veracity.mli` / `veracity.ml` expose the full pipeline as a typed library. Inputs are `File of string | Source of string | Prog of Ast.prog`; results are `('a, error) result`. The library is named `vcy` in dune; link with `(libraries vcy)`.
 
+`infer` returns `(Ast.global_env * string option) api_result` — the second element is the path to `index.html` when `opts.html = true`, `None` otherwise. Setting `html = true` in `options` mirrors `--html`: it enables diagram/query output and calls `Html_output.generate` after inference.
+
 ### Key dune files
 
-- `src/dune-project` — project root, requires dune ≥ 2.9 and menhir 2.1
+- `src/dune-project` — project root, requires dune ≥ 3.6 and menhir 2.1
 - `src/dune` — `(include_subdirs unqualified)` pulls in all subdirectories; excludes `parallel_multicore`, `parallel_singlecore`, and `run` from the library; `run` becomes a standalone executable
 - `src/vcy/dune` — declares `ocamllex` and `menhir` rules
 - `src/test/dune` — two OUnit2 test executables (`test`, `api_test`) with `LD_LIBRARY_PATH` set for the C hashtable library

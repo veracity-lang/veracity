@@ -141,19 +141,29 @@ match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
 ### `verify`
 
 ```ocaml
-val verify : ?opts:options -> input -> unit api_result
+val verify : ?opts:options -> input -> (unit * string option) api_result
 ```
 
-Verifies explicit commutativity conditions (blocks whose condition is `PhiExp e`). Individual results are printed to stdout in the same format as the CLI. Returns `Ok ()` once all conditions have been processed; returns `Error (VerifyError _)` only on a solver or runtime exception.
+Verifies explicit commutativity conditions (blocks whose condition is `PhiExp e`). Individual results are printed to stdout in the same format as the CLI. Returns `Ok ((), html_path)` once all conditions have been processed; `html_path` is the path to the generated report when `opts.html = true`, `None` otherwise. Returns `Error (VerifyError _)` only on a solver or runtime exception.
 
 As with `infer`, programs containing `havoc` without `use_ae = true` return an error immediately.
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5 } in
 match Veracity.verify ~opts (Veracity.File "benchmarks/verify/even-odd.vcy") with
-| Ok ()  -> ()
+| Ok ((), _) -> ()
 | Error (Veracity.VerifyError msg) -> Printf.eprintf "Verify error: %s\n" msg
 | Error _ -> assert false
+```
+
+**HTML report.** Generate a self-contained HTML report alongside verification:
+
+```ocaml
+let opts = { Veracity.default_options with prover = `CVC5; html = true } in
+match Veracity.verify ~opts (Veracity.File "benchmarks/verify/even-odd.vcy") with
+| Ok ((), Some path) -> Printf.printf "Report: %s\n" path
+| Ok ((), None)      -> assert false
+| Error _            -> ()
 ```
 
 ## Error handling summary
