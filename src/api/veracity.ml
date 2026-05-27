@@ -104,7 +104,13 @@ let infer ?(opts = default_options) input =
                 output_string oc src;
                 close_out oc;
                 p
-              | Prog _ -> ""
+              | Prog p ->
+                let src = Ast_print.AstPP.string_of_prog p in
+                let path = Filename.concat sdir "source.vcy" in
+                let oc = open_out path in
+                output_string oc src;
+                close_out oc;
+                path
             in
             Some (Html_output.generate
               ~source_file
@@ -153,7 +159,13 @@ let verify ?(opts = default_options) input =
                 output_string oc src;
                 close_out oc;
                 p
-              | Prog _ -> ""
+              | Prog p ->
+                let src = Ast_print.AstPP.string_of_prog p in
+                let path = Filename.concat sdir "source.vcy" in
+                let oc = open_out path in
+                output_string oc src;
+                close_out oc;
+                path
             in
             Some (Html_output.generate
               ~source_file
