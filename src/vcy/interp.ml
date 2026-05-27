@@ -881,10 +881,11 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
             | None       -> "unknown"
           in
           if not b then begin
-            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n"
-              (Range.string_of_range h.loc)
-              (AstPP.string_of_exp e)
-            else print_string "incorrect\n"
+            let msg = Printf.sprintf "Condition at %s verified as incorrect: %s"
+              (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
+            if not !emit_quiet then Printf.printf "%s\n" msg
+            else print_string "incorrect\n";
+            raise @@ CommuteFailure (msg, h.loc)
           end else begin
             if not !emit_quiet then
               Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
