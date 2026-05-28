@@ -12,6 +12,7 @@ let debug_display = ref false
 
 let emit_inferred_phis = ref false
 let emit_quiet = ref false
+let silent = ref false
 
 let print_cond = ref false
 
@@ -784,7 +785,7 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
     let bl = List.map (infer_phis_of_block g defs) bl in
     let phi' =
       let infer () = let phi' = infer_phi g var bl defs pre post in
-        if !emit_inferred_phis then
+        if !emit_inferred_phis && not !silent then
           begin if !emit_quiet
           then Printf.printf "%s\n"
             (AstPP.string_of_exp phi')
@@ -857,7 +858,7 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     let bl = List.map (verify_phis_of_block g defs) bl in
     begin match phi with
       | PhiExp e ->
-        if !print_cond then
+        if !print_cond && not !silent then
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
         let commute_subdir = match !Util.session_dir with
@@ -883,23 +884,29 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
           if not b then begin
             let msg = Printf.sprintf "Condition at %s verified as incorrect: %s"
               (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
-            if not !emit_quiet then Printf.printf "%s\n" msg
-            else print_string "incorrect\n";
+            if not !silent then begin
+              if not !emit_quiet then Printf.printf "%s\n" msg
+              else print_string "incorrect\n"
+            end;
             raise @@ CommuteFailure (msg, h.loc)
           end else begin
-            if not !emit_quiet then
-              Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
-                (Range.string_of_range h.loc)
-                (AstPP.string_of_exp e)
-                compl_str
-            else Printf.printf "correct\n%s\n" compl_str
+            if not !silent then begin
+              if not !emit_quiet then
+                Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
+                  (Range.string_of_range h.loc)
+                  (AstPP.string_of_exp e)
+                  compl_str
+              else Printf.printf "correct\n%s\n" compl_str
+            end
           end
         | None, _ ->
-          if not !emit_quiet then
-            Printf.printf "Condition at %s unable to verify: %s\n"
-              (Range.string_of_range h.loc)
-              (AstPP.string_of_exp e)
-          else print_string "failure\n"
+          if not !silent then begin
+            if not !emit_quiet then
+              Printf.printf "Condition at %s unable to verify: %s\n"
+                (Range.string_of_range h.loc)
+                (AstPP.string_of_exp e)
+            else print_string "failure\n"
+          end
         end;
         Servois2.Util.output_dir := None;
         (match !Util.session_dir, commute_subdir with

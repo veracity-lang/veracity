@@ -403,12 +403,13 @@ end
 module RunInfer : Runner = struct
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " infer [<flags>] <vcy program>"
-  
+
   let debug = ref false
 
   let time_servois = ref false
 
   let quiet = ref false
+  let silent_flag = ref false
 
   let anons = ref []
 
@@ -432,6 +433,7 @@ module RunInfer : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--time",  Arg.Set time_servois, " Output time of Servois execution to stderr"
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
+    ; "--silent", Arg.Set silent_flag, " Suppress all stdout output from the interpreter"
     (* ; "--poke", Arg.Unit (fun () -> Choose.choose := Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
     ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
@@ -476,6 +478,7 @@ module RunInfer : Runner = struct
     Interp.time_servois := !time_servois;
     Interp.emit_inferred_phis := true; (*not @@ !Interp.time_servois;*)
     Interp.emit_quiet := !quiet;
+    Interp.silent := !silent_flag;
 
     let prog = Driver.parse_oat_file prog_name in
     if Analyze.prog_has_havoc prog && not !use_ae then
@@ -546,6 +549,7 @@ module RunVerify : Runner = struct
   let debug = ref false
   let time_servois = ref false
   let quiet = ref false
+  let silent_flag = ref false
   let anons = ref []
   let cond = ref false
   let generate_html = ref false
@@ -563,6 +567,7 @@ module RunVerify : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--time",  Arg.Set time_servois, " Display time of Servois execution instead of inference"
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
+    ; "--silent", Arg.Set silent_flag, " Suppress all stdout output from the interpreter"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
@@ -589,6 +594,7 @@ module RunVerify : Runner = struct
 
     Interp.emit_inferred_phis := true;
     Interp.emit_quiet := !quiet;
+    Interp.silent := !silent_flag;
     Interp.print_cond := !cond;
 
     let prog = Driver.parse_oat_file prog_name in

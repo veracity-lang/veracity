@@ -11,6 +11,7 @@ type options = {
   timeout : float option;
   use_ae  : bool;
   html    : bool;
+  silent  : bool;
 }
 
 let default_options = {
@@ -18,6 +19,7 @@ let default_options = {
   timeout = None;
   use_ae  = false;
   html    = false;
+  silent  = true;
 }
 
 type error =
@@ -54,7 +56,8 @@ let configure opts =
     Servois2.Verify.default_verify_options with
       prover = prover;
       use_ae = opts.use_ae;
-  }
+  };
+  Interp.silent := opts.silent
 
 let parse input = resolve input
 

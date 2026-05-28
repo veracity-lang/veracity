@@ -11,7 +11,8 @@ type options = {
   prover  : [ `CVC4 | `CVC5 | `Z3 ];
   timeout : float option;
   use_ae  : bool;
-  html    : bool;  (** Generate a self-contained HTML report; [infer] returns its path. *)
+  html    : bool;    (** Generate a self-contained HTML report; [infer] returns its path. *)
+  silent  : bool;    (** Suppress all stdout output from the interpreter (default [true] via API). *)
 }
 
 val default_options : options
