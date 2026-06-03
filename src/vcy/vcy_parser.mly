@@ -52,8 +52,6 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token RBRACKET /* ] */
 %token LRBRACE  /* {} heap cell */
 %token ARROW    /* -> heap deref */
-%token HEAPVALUE_NEXT  /* -> "next" */
-%token HEAPVALUE_VALUE  /* -> "value" */
 %token TILDE    /* ~ */
 %token BANG     /* ! */
 %token DOT      /* . */
@@ -207,8 +205,11 @@ lhs:
   | e=basic_exp LBRACKET i=basic_exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj (e, id) }
-  | l=locexp ARROW HEAPVALUE_VALUE { loc $startpos $endpos @@ HDerefValue (l) }
-  | l=locexp ARROW HEAPVALUE_NEXT  { loc $startpos $endpos @@ HDerefNext  (l) }
+  | l=locexp ARROW id=IDENT {
+        match id with
+        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
+        | "value" -> loc $startpos $endpos @@ HDerefValue l
+        | _       -> failwith (Printf.sprintf "lhs: unknown heap field '%s'" id) }
 
 exp:
   | be=basic_exp        { be }
@@ -218,7 +219,7 @@ locexp:
   | i=INT   { loc $startpos $endpos @@ CInt i }
   | NULL    { loc $startpos $endpos @@ CNull TLoc }
   | id=IDENT            { loc $startpos $endpos @@ Id id }
-  | l=locexp ARROW HEAPVALUE_NEXT { loc $startpos $endpos @@ HDerefNext ( l ) }
+  | l=locexp ARROW id=IDENT { loc $startpos $endpos @@ HDerefNext l }
 
 heapcell_exp:
   | LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
@@ -236,8 +237,11 @@ basic_exp:
                         { loc $startpos $endpos @@ CallRaw (e,es) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj(e, id) }
   | LPAREN e=exp RPAREN { e }
-  | l=locexp ARROW HEAPVALUE_NEXT  { loc $startpos $endpos @@ HDerefNext  ( l ) }
-  | l=locexp ARROW HEAPVALUE_VALUE { loc $startpos $endpos @@ HDerefValue ( l ) }
+  | l=locexp ARROW id=IDENT {
+        match id with
+        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
+        | "value" -> loc $startpos $endpos @@ HDerefValue l
+        | _       -> failwith (Printf.sprintf "basic_exp: unknown heap field '%s'" id) }
   | EXISTS id=IDENT DOT body=basic_exp
       %prec DARROW
       { loc $startpos $endpos @@ Exists(id, TInt, body) }
@@ -273,7 +277,8 @@ field:
   | id=IDENT EQ e=exp { (id, e) }
 
 vdecl:
-  | ty=ty id=IDENT EQ init=exp { (id, (ty, init)) }
+  | ty=ty id=IDENT  EQ init=exp { (id, (ty, init)) }
+  | ty=ty id=UIDENT EQ init=exp { (id, (ty, init)) }
 
 stmt: 
   | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }

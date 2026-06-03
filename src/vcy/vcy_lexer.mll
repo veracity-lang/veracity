@@ -33,8 +33,7 @@
   (* type keyword for declarations *)
   ("tloc", TLOC); (* loc l = ... *)
   ("theapval", THEAP_VALUE); (* heapval v = { {} } *)
-  ("value", HEAPVALUE_VALUE);  (* for  l->value *)
-  ("next",  HEAPVALUE_NEXT); (* for  l->next  *)
+  (* "value" and "next" are contextual field names after ->, not keywords *)
 
   ("struct", STRUCT);
   ("else", ELSE);

@@ -88,7 +88,7 @@ module AstPP = struct
     | THashTable (tyk, tyv) -> pps "hashtable["; print_ty_aux fmt tyk; pps ", "; print_ty_aux fmt tyv; pps "]"
     | TStruct sid -> pps sid
     | TArr ty -> print_ty_aux fmt ty; pps "[]"
-    | TLoc -> pps "loc"
+    | TLoc -> pps "tloc"
     | THeapValue (tyi, tyl) ->
       pps "HeapValue["; print_ty_aux fmt tyi; pps ", "; print_ty_aux fmt tyl; pps "]"
 
@@ -166,7 +166,7 @@ module AstPP = struct
           pp_close_box fmt () 
       | HeapAlloc (e1, e2 ) ->
           pp_open_box fmt 0;
-          pps "new heapval{";
+          pps "new {";
           print_exp_aux this_level fmt e1;
           pps "{}";
           print_exp_aux this_level fmt e2;
