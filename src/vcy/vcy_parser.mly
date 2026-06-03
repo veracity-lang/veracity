@@ -102,7 +102,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %left RSHIFTU RSHIFT LSHIFT
 %left DASH PLUS CARET
 %left STAR
-%left DOT
+%left DOT ARROW
 %left PERCENT
 %right QMARK COLON
 %nonassoc BANG
@@ -202,10 +202,11 @@ ty:
 
 lhs:
   | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | id=UIDENT           { loc $startpos $endpos @@ Id id }
   | e=basic_exp LBRACKET i=basic_exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj (e, id) }
-  | l=locexp ARROW id=IDENT {
+  | l=basic_exp ARROW id=IDENT {
         match id with
         | "next"  -> loc $startpos $endpos @@ HDerefNext  l
         | "value" -> loc $startpos $endpos @@ HDerefValue l
@@ -215,14 +216,8 @@ exp:
   | be=basic_exp        { be }
   | nd=new_data         { nd }
 
-locexp:
-  | i=INT   { loc $startpos $endpos @@ CInt i }
-  | NULL    { loc $startpos $endpos @@ CNull TLoc }
-  | id=IDENT            { loc $startpos $endpos @@ Id id }
-  | l=locexp ARROW id=IDENT { loc $startpos $endpos @@ HDerefNext l }
-
 heapcell_exp:
-  | LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
+  | LBRACE e1=basic_exp LRBRACE e2=basic_exp RBRACE
        { loc $startpos $endpos @@ HeapValue (e1, e2) }
 
 basic_exp:
@@ -237,7 +232,7 @@ basic_exp:
                         { loc $startpos $endpos @@ CallRaw (e,es) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj(e, id) }
   | LPAREN e=exp RPAREN { e }
-  | l=locexp ARROW id=IDENT {
+  | l=basic_exp ARROW id=IDENT {
         match id with
         | "next"  -> loc $startpos $endpos @@ HDerefNext  l
         | "value" -> loc $startpos $endpos @@ HDerefValue l
@@ -253,12 +248,13 @@ atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | NULL                { loc $startpos $endpos @@ CNull TLoc }
   | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | id=UIDENT           { loc $startpos $endpos @@ Id id }
   | s=STRING   { loc $startpos $endpos @@ CStr s}
   | TRUE       { loc $startpos $endpos @@ CBool true}
   | FALSE      { loc $startpos $endpos @@ CBool false}
 
 new_data:
-  | NEW LBRACE e1=basic_exp LRBRACE e2=locexp RBRACE
+  | NEW LBRACE e1=basic_exp LRBRACE e2=basic_exp RBRACE
        { loc $startpos $endpos @@ HeapAlloc(e1,e2) }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         {loc $startpos $endpos @@ CArr(t, es)}

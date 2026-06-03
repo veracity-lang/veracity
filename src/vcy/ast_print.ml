@@ -99,7 +99,7 @@ module AstPP = struct
 
     if this_level < level then pps "(";
     begin match e.elt with
-      | CNull t -> print_ty_aux fmt t; pps "null"
+      | CNull t -> (*print_ty_aux fmt t;*) pps "null"
       | CBool v -> pps (if v then "true" else "false")
       | CInt  v -> pps (Int64.to_string v)
       | CStr  v -> pps (Printf.sprintf "%S" v)

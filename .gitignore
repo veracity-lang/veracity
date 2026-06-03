@@ -3,3 +3,5 @@
 *.cmi
 reports/test/~$speedup-table.xlsx
 .vscode
+_build/**
+src/vcy/vcy_parser.conflicts
