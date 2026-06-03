@@ -566,11 +566,17 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let exp_smt,_ = exp_to_smt_exp e right vctrs  in
           ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
 
-        | Havoc(id) ->
+        | Havoc(e) ->
+          let rec base_id = function
+            | {elt=Id n;_} -> n
+            | {elt=Index(b,_);_} -> base_id b
+            | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
+            | _ -> failwith "havoc: unsupported lvalue expression"
+          in
+          let id = base_id e in
           let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
-          let havoc_id = id^"_havoc" in 
-          let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in 
-
+          let havoc_id = id^"_havoc" in
+          let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
           EExists([(Var havoc_id, TInt (* TODO: make type dynamic *))], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
 
         | Require(e) ->

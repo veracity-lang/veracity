@@ -59,7 +59,13 @@ and c_of_stmt = function
     | While(guard, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
     | Raise(e) -> raise @@ NotImplemented "c_of_stmt Raise"
     | Commute(var, phi, bodies, pre, post) -> !handle_comm phi bodies
-    | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
+    | Havoc(e) ->
+      let rec base_id = function
+        | {elt=Id n;_} -> n | {elt=Index(b,_);_} -> base_id b
+        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
+        | _ -> failwith "havoc: unsupported lvalue"
+      in
+      sp "/* %s = __VERIFIER_nondet_int() */" (!mangle (base_id e))
     | Assume(e) -> sp "/* assume%s */" (c_of_expnode e)
 and c_of_stmtnode x = c_of_stmt x.elt
 and c_of_block b = let indent_pre = !indent in 

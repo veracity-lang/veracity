@@ -293,7 +293,7 @@ stmt:
   | RAISE e=exp SEMI { loc $startpos $endpos @@ Raise e }
   | ASSERT e=exp SEMI { loc $startpos $endpos @@ Assert e }
   | ASSUME e=exp SEMI { loc $startpos $endpos @@ Assume e }
-  | HAVOC i=IDENT SEMI { loc $startpos $endpos @@ Havoc i }
+  | HAVOC e=exp SEMI { loc $startpos $endpos @@ Havoc e }
 
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }

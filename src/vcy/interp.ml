@@ -1059,8 +1059,8 @@ let cook_calls (g : global_env) : global_env =
       Assert (cook_calls_of_exp e)
     | Assume e ->
       Assume (cook_calls_of_exp e)
-    | Havoc id ->
-      Havoc id
+    | Havoc e ->
+      Havoc (cook_calls_of_exp e)
     | Require e ->
       Require (cook_calls_of_exp e)
     in

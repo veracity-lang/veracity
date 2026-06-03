@@ -172,8 +172,8 @@ module AstPP = struct
           print_exp_aux this_level fmt e2;
           pps "}";
           pp_close_box fmt () 
-      | HDerefNext (l1) -> pps "TODO:Claude-Next"
-      | HDerefValue (l1) -> pps "TODO:Claude-Value"
+      | HDerefNext  (l1) -> print_exp_aux this_level fmt l1; pps "->next"
+      | HDerefValue (l1) -> print_exp_aux this_level fmt l1; pps "->value"
       | Exists (id, ty, body) ->
           pp_open_box fmt 0;
           pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
@@ -294,11 +294,16 @@ module AstPP = struct
             | PhiInf -> pps " _ "
           end;
           let ppnl = pp_force_newline fmt in
-          (* Basically copy pasted from print_block_aux *)
-          if (List.length bodies) > 0 then
+          if (List.length bodies) > 0 || pre <> None || post <> None then
             begin pps "{"; ppnl (); pps "  ";
                   pp_open_vbox fmt 0;
+                  (match pre with
+                   | Some e -> pps "pre: "; print_exp_aux 0 fmt e; ppnl ()
+                   | None -> ());
                   List.iter (Util.compose ppnl (print_block_aux fmt)) bodies;
+                  (match post with
+                   | Some e -> ppnl (); pps "post: "; print_exp_aux 0 fmt e
+                   | None -> ());
                   pp_close_box fmt ();
                   ppnl (); pps "}"
             end
@@ -307,8 +312,8 @@ module AstPP = struct
       | Assert _ -> raise @@ NotImplemented "print_stmt_aux Assert"
       | Assume(e) ->
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
-      | Havoc(id) ->
-        pps "havoc "; pps id; pps ";"
+      | Havoc(e) ->
+        pps "havoc "; print_exp_aux 0 fmt e; pps ";"
     end
 
   let print_mdecl_aux fmt {elt={pure; mrtyp; mname; args; body};_} = (* TODO: doesn't use pure *)
@@ -568,8 +573,8 @@ module AstML = struct
       sp "Assert (%s)" (string_of_exp e)
     | Assume e ->
       sp "Assume (%s)" (string_of_exp e)
-    | Havoc id ->
-      sp "Havoc %s" (string_of_id id)
+    | Havoc e ->
+      sp "Havoc (%s)" (string_of_exp e)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s

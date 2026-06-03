@@ -149,7 +149,7 @@ and stmt =
 | Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
 | Assert of exp node
 | Assume of exp node
-| Havoc of id
+| Havoc of exp node
 | Require of exp node
 
 and commute_pre_cond = exp node 
