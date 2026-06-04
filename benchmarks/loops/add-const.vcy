@@ -1,0 +1,32 @@
+/* add-const.vcy
+ * Block A increments c by 1.
+ * Block B runs a loop that adds 3 to c on each of n iterations
+ * (total: adds 3*n to c).
+ *
+ * These commute because addition is commutative:
+ *   A then B: (c+1) + 3*n = c + 3*n + 1
+ *   B then A: (c+3*n) + 1 = c + 3*n + 1
+ *
+ * The invariant c == c0 + 3*i (where c0 = c at loop entry) pins
+ * the post-loop value of c to c0 + 3*n.
+ *
+ * Run: ./vcy verify benchmarks/loops/add-const.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int i = 0;
+    int n = 4;
+
+    commute (true) {
+        { c = c + 1; }
+        {
+            int c0 = c;
+            while (i < n) invariant i >= 0 && i <= n && c == c0 + 3 * i {
+                c = c + 3;
+                i = i + 1;
+            }
+        }
+    }
+
+    return c;
+}

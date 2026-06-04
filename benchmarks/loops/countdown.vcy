@@ -1,0 +1,18 @@
+/* countdown.vcy
+ * Block A increments a shared counter c.
+ * Block B counts t down from 10 to 0.
+ * Tight invariant (t >= 0 && t <= 10) forces t = 0 at exit.
+ *
+ * Run: ./vcy verify benchmarks/loops/countdown.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int t = 10;
+
+    commute (true) {
+        { c = c + 1; }
+        { while (t > 0) invariant t >= 0 && t <= 10 { t = t - 1; } }
+    }
+
+    return c;
+}

@@ -1,0 +1,20 @@
+/* scan.vcy
+ * Block A increments a shared counter c.
+ * Block B scans a loop variable i from 0 up to n.
+ * Tight invariant (i >= 0 && i <= n) forces i = n at exit,
+ * so Servois2 can verify that both orderings reach the same state.
+ *
+ * Run: ./vcy verify benchmarks/loops/scan.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int i = 0;
+    int n = 10;
+
+    commute (true) {
+        { c = c + 1; }
+        { while (i < n) invariant i >= 0 && i <= n { i = i + 1; } }
+    }
+
+    return c;
+}

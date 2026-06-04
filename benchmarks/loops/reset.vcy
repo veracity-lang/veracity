@@ -1,0 +1,19 @@
+/* reset.vcy
+ * Block A sets a shared flag to 1.
+ * Block B zeros out a counter x by decrementing it.
+ * Tight invariant (x >= 0 && x <= 100) forces x = 0 at exit.
+ * Since flag and x are independent, both orderings reach the same state.
+ *
+ * Run: ./vcy verify benchmarks/loops/reset.vcy --prover cvc5
+ */
+int main() {
+    int flag = 0;
+    int x = 100;
+
+    commute (true) {
+        { flag = 1; }
+        { while (x > 0) invariant x >= 0 && x <= 100 { x = x - 1; } }
+    }
+
+    return flag;
+}

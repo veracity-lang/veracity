@@ -1,0 +1,33 @@
+/* inc-dec-loop.vcy
+ * Block A increments c by 1.
+ * Block B runs a loop that increments then immediately decrements c each
+ * iteration, leaving c unchanged (net effect: 0 per iteration).
+ *
+ * These commute because B has no net effect on c:
+ *   A then B: c + 1  (B changes nothing)
+ *   B then A: c + 1  (B changes nothing)
+ *
+ * The invariant c == c0 confirms c is preserved by the loop.
+ * The invariant i >= 0 && i <= n pins the post-loop value of i.
+ *
+ * Run: ./vcy verify benchmarks/loops/inc-dec-loop.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int i = 0;
+    int n = 4;
+
+    commute (true) {
+        { c = c + 1; }
+        {
+            int c0 = c;
+            while (i < n) invariant i >= 0 && i <= n && c == c0 {
+                c = c + 1;
+                c = c - 1;
+                i = i + 1;
+            }
+        }
+    }
+
+    return c;
+}

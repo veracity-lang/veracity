@@ -1,0 +1,25 @@
+/* two-loops.vcy
+ * Block A increments a shared counter c.
+ * Block B runs two sequential loops, each with a tight invariant.
+ * First loop scans i from 0 to n; second counts j down from 5 to 0.
+ * Both invariants uniquely determine exit values (i = n, j = 0),
+ * so Servois2 can verify commutativity.
+ *
+ * Run: ./vcy verify benchmarks/loops/two-loops.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int i = 0;
+    int n = 8;
+    int j = 5;
+
+    commute (true) {
+        { c = c + 1; }
+        {
+            while (i < n) invariant i >= 0 && i <= n { i = i + 1; }
+            while (j > 0) invariant j >= 0 && j <= 5  { j = j - 1; }
+        }
+    }
+
+    return c;
+}

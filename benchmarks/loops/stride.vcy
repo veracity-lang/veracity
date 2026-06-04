@@ -1,0 +1,18 @@
+/* stride.vcy
+ * Block A increments a shared counter c.
+ * Block B decrements x by 2 each step until it reaches 0.
+ * Tight invariant (x >= 0 && x % 2 == 0 && x <= 20) forces x = 0 at exit.
+ *
+ * Run: ./vcy verify benchmarks/loops/stride.vcy --prover cvc5
+ */
+int main() {
+    int c = 0;
+    int x = 20;
+
+    commute (true) {
+        { c = c + 1; }
+        { while (x > 0) invariant x >= 0 && x % 2 == 0 && x <= 20 { x = x - 2; } }
+    }
+
+    return c;
+}

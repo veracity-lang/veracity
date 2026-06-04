@@ -59,6 +59,11 @@ for f in "${MOVERS_INTERP[@]}"; do
   fi
 done
 
+echo "=== benchmarks/loops ==="
+for f in benchmarks/loops/*.vcy; do
+  run "$f" "$VCY" verify "$f" --prover cvc5
+done
+
 echo "=== benchmarks/invariants ==="
 for f in benchmarks/invariants/*.vcy; do
   run "$f" "$VCY" invariants "$f" --prover cvc5

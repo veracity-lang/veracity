@@ -426,6 +426,46 @@ let mk_var_pair var_id leftright vctrs =
   (EVar (Smt.Var(var_id^"_"^(string_of_int  cur_ctr))), 
    EVar (Smt.Var(var_id^"_"^(string_of_int (cur_ctr+1)))))
 
+(* Collect base variable names that are written by a block of statements.
+   Results may contain duplicates; caller should dedup.
+   Includes heap model variable names when heap writes or allocations occur. *)
+let rec loop_modified_vars (stmts : block) : string list =
+  List.concat_map loop_modified_in_stmt stmts
+
+and loop_modified_in_stmt (stmt : stmt node) : string list =
+  let rec base_id_exp e = match e.elt with
+    | Id n -> Some n
+    | Index (b, _) -> base_id_exp b
+    | HDerefValue b | HDerefNext b -> base_id_exp b
+    | _ -> None
+  in
+  match stmt.elt with
+  (* Heap allocation writes the lhs variable and all three heap model vars *)
+  | Assn (lhs, {elt = HeapAlloc _; _}) ->
+      heap_model_vars @ Option.to_list (base_id_exp lhs)
+  (* Heap-field writes touch the relevant model array *)
+  | Assn ({elt = HDerefValue _; _}, _) -> ["heap_value"]
+  | Assn ({elt = HDerefNext  _; _}, _) -> ["heap_next"]
+  | Assn (lhs, _)  -> Option.to_list (base_id_exp lhs)
+  | Decl (id, _)   -> [id]
+  | Havoc e ->
+      let rec base_id = function
+        | {elt=Id n;_} -> n
+        | {elt=Index(b,_);_} -> base_id b
+        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
+        | _ -> failwith "loop_modified_vars: unsupported havoc lvalue"
+      in
+      [base_id e]
+  | If (_, b1, b2) ->
+      loop_modified_vars b1.elt @ loop_modified_vars b2.elt
+  | While (_, _, body) ->
+      loop_modified_vars body.elt
+  | For (vds, _, _, body) ->
+      List.map (fun (id, _) -> id) vds @ loop_modified_vars body.elt
+  | Commute (_, _, blocks, _, _) ->
+      List.concat_map (fun b -> loop_modified_vars b.elt) blocks
+  | _ -> []
+
 let compile_block_to_smt_exp (genv: global_env) (b : block) =
   let local_variable_ctr_list = variable_ctr_list in
   let bind = function
@@ -585,6 +625,47 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
           pre := exp_smt;
           compile_block_to_smt tl vctrs;
+
+        (* Loop with a verified invariant: replace the loop with its invariant.
+           Existentially quantify over post-loop values of all variables
+           written by the body, assert (I ∧ ¬G) at the post-loop state, then
+           continue with the block tail. *)
+        | While (guard, Some inv, body) ->
+          let modified =
+            loop_modified_vars body.elt
+            |> List.sort_uniq String.compare
+            |> List.filter (Hashtbl.mem vctrs)
+          in
+          (* Bump version counter for each modified variable (side-effects vctrs). *)
+          let havoc_triples = List.map (fun id ->
+            let hv = id ^ "_loop_havoc" in
+            let new_id =
+              match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with
+              | EVar v -> v
+              | _ -> failwith ("loop_modified_vars: expected EVar for " ^ id)
+            in
+            let sty =
+              match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+              | Some ((_, ty), _) -> sty_of_ty ty
+              | None ->
+                  if List.mem id heap_model_vars
+                  then Smt.TArray (Smt.TInt, Smt.TInt)
+                  else Smt.TInt
+            in
+            (new_id, Smt.EVar (Smt.Var hv), hv, sty)
+          ) modified in
+          (* Evaluate invariant and guard under the post-loop variable versions. *)
+          let inv_smt,   _ = exp_to_smt_exp inv   right vctrs in
+          let guard_smt, _ = exp_to_smt_exp guard right vctrs in
+          let exit_cond = ELop (And, [inv_smt; EUop (Not, guard_smt)]) in
+          let existentials = List.map (fun (_, _, hv, sty) -> (Smt.Var hv, sty)) havoc_triples in
+          let lets         = List.map (fun (nid, e, _, _) -> (nid, e)) havoc_triples in
+          EExists (existentials,
+            ELet (lets,
+              ELop (And, [exit_cond; compile_block_to_smt tl vctrs])))
+
+        | While (_, None, _) ->
+          compile_block_to_smt tl vctrs
 
         | _ -> compile_block_to_smt tl vctrs
         end
