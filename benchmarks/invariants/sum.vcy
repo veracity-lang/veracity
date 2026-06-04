@@ -1,0 +1,11 @@
+/* Summation: both the index and the running total stay non-negative. */
+int main() {
+    int i = 0;
+    int s = 0;
+    int n = 20;
+    while (i < n) invariant s >= 0 && i >= 0 {
+        s = s + i;
+        i = i + 1;
+    }
+    return s;
+}

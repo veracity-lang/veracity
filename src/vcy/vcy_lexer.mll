@@ -52,6 +52,7 @@
   ("leftmover", COMMUTE_LEFT);
   ("pre", PRE);
   ("post", POST);
+  ("invariant", INVARIANT);
 
 
   ("hashtable", HASHTABLE);

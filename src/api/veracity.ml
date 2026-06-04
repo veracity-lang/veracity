@@ -180,3 +180,32 @@ let verify ?(opts = default_options) input =
          Interp.emit_inferred_phis := saved_emit;
          Error (VerifyError (Printexc.to_string e)))
     end
+
+let check_invariants ?(opts = default_options) input =
+  match resolve input with
+  | Error e -> Error e
+  | Ok prog ->
+    configure opts;
+    let prover : (module Servois2.Provers.Prover) = match opts.prover with
+      | `CVC4 -> (module Servois2.Provers.ProverCVC4)
+      | `CVC5 -> (module Servois2.Provers.ProverCVC5)
+      | `Z3   -> (module Servois2.Provers.ProverZ3)
+    in
+    (try
+      let env = Interp.initialize_env prog false in
+      let results = Invariants.check_prog env.g prover in
+      let failures = List.filter_map (fun (loc, res) ->
+        match res with
+        | Servois2.Provers.Sat _   ->
+            Some (Printf.sprintf "Loop invariant at %s: does not hold (counterexample exists)"
+              (Range.string_of_range loc))
+        | Servois2.Provers.Unsat   -> None
+        | Servois2.Provers.Unknown ->
+            Some (Printf.sprintf "Loop invariant at %s: could not be verified (unknown)"
+              (Range.string_of_range loc))
+      ) results in
+      match failures with
+      | []   -> Ok ()
+      | msgs -> Error (VerifyError (String.concat "\n" msgs))
+    with e ->
+      Error (VerifyError (Printexc.to_string e)))

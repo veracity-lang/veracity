@@ -1,0 +1,11 @@
+/* Doubling loop: product stays positive, index stays non-negative. */
+int main() {
+    int p = 1;
+    int i = 0;
+    int n = 8;
+    while (i < n) invariant p >= 1 && i >= 0 {
+        p = p * 2;
+        i = i + 1;
+    }
+    return p;
+}

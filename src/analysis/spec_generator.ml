@@ -50,7 +50,9 @@ and stmt_uses_heap (s : stmt node) = match s.elt with
   | SCallRaw (_, es)      -> List.exists exp_uses_heap es
   | SCall (_, es)         -> List.exists exp_uses_heap es
   | If (e, b1, b2)        -> exp_uses_heap e || block_uses_heap b1.elt || block_uses_heap b2.elt
-  | While (e, b)          -> exp_uses_heap e || block_uses_heap b.elt
+  | While (e, inv, b)     -> exp_uses_heap e
+                             || (match inv with Some i -> exp_uses_heap i | None -> false)
+                             || block_uses_heap b.elt
   | For (vds, eo, sno, b) ->
       List.exists (fun (_, (_, e)) -> exp_uses_heap e) vds
       || (match eo  with None -> false | Some e -> exp_uses_heap e)
@@ -297,7 +299,7 @@ let get_postconditions () : sexp =
                 if List.mem key heap_model_vars then exp_list := !exp_list @ [final_mangle_id !value key]
                 else
                 match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
-                | None -> print_string key; print_newline (); raise Not_found
+                | None -> () (* loop-internal variable not in state; skip *)
                 | Some ((id,ty),ety) ->
                   let final = match ty with 
                   | THashTable (_,_) ->

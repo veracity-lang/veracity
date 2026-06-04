@@ -42,3 +42,10 @@ val infer : ?opts:options -> input -> (Ast.global_env * string option) api_resul
     printed to stdout as normal. Returns [Error (VerifyError _)] only on a
     runtime/solver exception. *)
 val verify : ?opts:options -> input -> (unit * string option) api_result
+
+(** Check every annotated while-loop invariant in the program.
+    Each invariant [I] on [while (G) invariant I { B }] is verified by
+    checking [{I ∧ G} B {I}] using the configured SMT prover.
+    Returns [Ok ()] if all invariants hold, [Error (VerifyError _)] if any
+    fail (the message names the location and the failing invariant). *)
+val check_invariants : ?opts:options -> input -> unit api_result

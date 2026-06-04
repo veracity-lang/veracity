@@ -1,0 +1,13 @@
+/* Accumulator: a running total and a count both stay non-negative.
+   Each iteration adds i to acc and increments both i and count. */
+int main() {
+    int acc   = 0;
+    int count = 0;
+    int i     = 0;
+    while (i < 50) invariant acc >= 0 && count >= 0 && i >= 0 {
+        acc   = acc + i;
+        count = count + 1;
+        i     = i + 1;
+    }
+    return acc;
+}

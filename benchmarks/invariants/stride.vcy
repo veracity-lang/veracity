@@ -1,0 +1,9 @@
+/* Stride-2 counter: x stays non-negative and even throughout.
+   Invariant: x >= 0 && x % 2 == 0 */
+int main() {
+    int x = 20;
+    while (x > 0) invariant x >= 0 && x % 2 == 0 {
+        x = x - 2;
+    }
+    return x;
+}

@@ -1,0 +1,8 @@
+/* Descending counter: i remains non-negative as long as the guard holds. */
+int main() {
+    int i = 100;
+    while (i > 0) invariant i >= 0 {
+        i = i - 1;
+    }
+    return i;
+}

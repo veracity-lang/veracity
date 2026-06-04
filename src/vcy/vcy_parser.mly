@@ -90,6 +90,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 /* Commutativie pre/post conditions */
 %token PRE POST
 
+%token INVARIANT
+
 %token UNDERSCORE
 
 %right DARROW
@@ -276,7 +278,11 @@ vdecl:
   | ty=ty id=IDENT  EQ init=exp { (id, (ty, init)) }
   | ty=ty id=UIDENT EQ init=exp { (id, (ty, init)) }
 
-stmt: 
+%inline while_inv:
+  | (* empty *)              { None }
+  | INVARIANT inv=exp        { Some inv }
+
+stmt:
   | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }
   | p=lhs EQ e=exp SEMI { loc $startpos $endpos @@ Assn(p,e) }
   | e=IDENT(*exp*) LPAREN es=separated_list(COMMA, exp) RPAREN SEMI
@@ -284,8 +290,8 @@ stmt:
   | ifs=if_stmt         { ifs }
   | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
-  | WHILE LPAREN e=exp RPAREN b=block  
-                        { loc $startpos $endpos @@ While(e, b) }
+  | WHILE LPAREN e=exp RPAREN inv=while_inv b=block
+                        { loc $startpos $endpos @@ While(e, inv, b) }
   | FOR LPAREN vdecls=separated_list(COMMA, vdecl) SEMI e=option(exp) SEMI s=option(stmt) RPAREN b=block
       {loc $startpos $endpos @@ For(vdecls, e, s, b)}
   | variant=commute_variant phi=commute_condition

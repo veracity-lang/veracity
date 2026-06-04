@@ -1,0 +1,14 @@
+/* Nested loops: each loop carries its own invariant.
+   Outer invariant: i >= 0.  Inner invariant: j >= 0. */
+int main() {
+    int i = 0;
+    int n = 5;
+    while (i < n) invariant i >= 0 {
+        int j = 0;
+        while (j < i) invariant j >= 0 {
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return i;
+}

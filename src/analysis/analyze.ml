@@ -152,7 +152,7 @@ and stmt_has_havoc (s : stmt node) =
   match s.elt with
   | Havoc _ -> true
   | If (_, b1, b2) -> block_has_havoc b1.elt || block_has_havoc b2.elt
-  | While (_, b)   -> block_has_havoc b.elt
+  | While (_, _, b)   -> block_has_havoc b.elt
   | For (_, _, _, b) -> block_has_havoc b.elt
   | Commute (_, _, bls, _, _) -> List.exists (fun b -> block_has_havoc b.elt) bls
   | _ -> false

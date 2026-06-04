@@ -1,0 +1,8 @@
+/* Bounded counter: i stays within [0, 100] throughout. */
+int main() {
+    int i = 0;
+    while (i < 100) invariant i >= 0 && i <= 100 {
+        i = i + 1;
+    }
+    return i;
+}

@@ -644,16 +644,70 @@ module RunVerify : Runner = struct
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 
+module RunInvariants : Runner = struct
+  let usage_msg exe_name =
+    "Usage: " ^ exe_name ^ " invariants [<flags>] <vcy program>"
+
+  let anons = ref []
+  let prover_name = ref ""
+  let use_ae = ref false
+  let silent_flag = ref false
+
+  let anon_fun (v : string) = anons := v :: !anons
+
+  let speclist =
+    [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
+    ; "--silent", Arg.Set silent_flag, " Suppress interpreter stdout"
+    ] |> Arg.align
+
+  let get_prover () : [ `CVC4 | `CVC5 | `Z3 ] =
+    match !prover_name |> String.lowercase_ascii with
+    | "cvc4" -> `CVC4
+    | "cvc5" -> `CVC5
+    | "z3"   -> `Z3
+    | ""     -> `CVC5
+    | s      -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
+
+  let run () =
+    Arg.current := 1;
+    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
+    match List.rev !anons with
+    | [prog_name] ->
+        let opts = Vcy.Veracity.{
+          default_options with
+          prover  = get_prover ();
+          use_ae  = !use_ae;
+          silent  = !silent_flag;
+        } in
+        (match Vcy.Veracity.check_invariants ~opts (Vcy.Veracity.File prog_name) with
+         | Ok () ->
+             Printf.printf "All loop invariants verified.\n"
+         | Error (Vcy.Veracity.VerifyError msg) ->
+             Printf.printf "Invariant failures:\n%s\n" msg;
+             exit 1
+         | Error e ->
+             Printf.printf "Error: %s\n"
+               (match e with
+                | Vcy.Veracity.ParseError  m -> "parse error: "  ^ m
+                | Vcy.Veracity.InterpError m -> "interp error: " ^ m
+                | Vcy.Veracity.InferError  m -> "infer error: "  ^ m
+                | Vcy.Veracity.VerifyError m -> m);
+             exit 1)
+    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+end
+
 type command =
-  | CmdHelp (* Show help info *)
-  | CmdParse (* Parse program *)
-  | CmdInterp (* Interpret program *)
-  | CmdInterface (* Generate interface *)
-  | CmdYaml (* Generate YAML for Servois *)
-  | CmdPhi (* Generate commutativity condition *)
-  | CmdInfer (* Infer commute conditions *)
+  | CmdHelp
+  | CmdParse
+  | CmdInterp
+  | CmdInterface
+  | CmdYaml
+  | CmdPhi
+  | CmdInfer
   | CmdVerify
   | CmdTranslate
+  | CmdInvariants
 
 let command_map =
   [ "help",      CmdHelp
@@ -663,20 +717,22 @@ let command_map =
   ; "interface", CmdInterface
   (*; "yaml",      CmdYaml*)
   (*; "phi",       CmdPhi*)
-  ; "infer",     CmdInfer
-  ; "verify",    CmdVerify
-  ; "translate", CmdTranslate
+  ; "infer",      CmdInfer
+  ; "verify",     CmdVerify
+  ; "translate",  CmdTranslate
+  ; "invariants", CmdInvariants
   ]
 
 let runner_map : (command * (module Runner)) list =
-  [ CmdInterp,    (module RunInterp)
-  ; CmdParse,     (module RunParse)
+  [ CmdInterp,     (module RunInterp)
+  ; CmdParse,      (module RunParse)
   (*; CmdInterface, (module RunInterface)*)
   (*; CmdYaml,      (module RunYaml)*)
   (*; CmdPhi,       (module RunPhi)*)
-  ; CmdInfer,     (module RunInfer)
-  ; CmdVerify,    (module RunVerify)
-  ; CmdTranslate, (module RunTranslate)
+  ; CmdInfer,      (module RunInfer)
+  ; CmdVerify,     (module RunVerify)
+  ; CmdTranslate,  (module RunTranslate)
+  ; CmdInvariants, (module RunInvariants)
   ]
 
 let display_help_message exe_name = 
@@ -690,6 +746,7 @@ let display_help_message exe_name =
     (*"  phi         Generate commutativty condition between two methods\n" ^*)
     "  infer       Infer and emit all blank commutativity conditions\n" ^
     "  verify      Verify all provided commutativity conditions\n" ^
+    "  invariants  Check all annotated while-loop invariants\n" ^
     "  translate   Translate program to C\n "
   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details
 

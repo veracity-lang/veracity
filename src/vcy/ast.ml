@@ -144,7 +144,7 @@ and stmt =
 | SCall of method_variant * exp node list
 | If of exp node * block node * block node
 | For of vdecl list * exp node option * stmt node option * block node
-| While of exp node * block node
+| While of exp node * exp node option * block node
 | Raise of exp node
 | Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
 | Assert of exp node

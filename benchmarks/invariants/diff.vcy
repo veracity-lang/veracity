@@ -1,0 +1,11 @@
+/* Difference invariant: the gap (a - b) stays constant throughout.
+   Invariant: a - b == 5 */
+int main() {
+    int a = 15;
+    int b = 10;
+    while (a > 0) invariant a - b == 5 {
+        a = a - 1;
+        b = b - 1;
+    }
+    return a;
+}

@@ -676,7 +676,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     (* Run for loop as a while loop *)
     let env, v = interp_stmt_while !env' Range.norange cnd body in
     pop_block_from_callstack env, v
-  | While (cnd, body) ->
+  | While (cnd, _inv, body) ->
     interp_stmt_while env stmt.loc cnd body
   | Commute (variant, phi, blocks, _, _) ->
     let cnd =
@@ -776,8 +776,8 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
     in node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
-  | While (e,b) ->
-    let s = While (e, infer_phis_of_block g defs b) in
+  | While (e,inv,b) ->
+    let s = While (e, inv, infer_phis_of_block g defs b) in
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
@@ -849,8 +849,8 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     in node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
-  | While (e,b) ->
-    let s = While (e, verify_phis_of_block g defs b) in
+  | While (e,inv,b) ->
+    let s = While (e, inv, verify_phis_of_block g defs b) in
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
@@ -1037,8 +1037,8 @@ let cook_calls (g : global_env) : global_env =
       let ss = Option.map cook_calls_of_stmt ss in
       let b = cook_calls_of_block b in
       For (vl, e, ss, b)
-    | While (e, b) ->
-      While (cook_calls_of_exp e, cook_calls_of_block b)
+    | While (e, inv, b) ->
+      While (cook_calls_of_exp e, Option.map cook_calls_of_exp inv, cook_calls_of_block b)
     | Raise e ->
       Raise (cook_calls_of_exp e)
     | Commute (v, c, bl, pre, post) ->

@@ -262,8 +262,12 @@ module AstPP = struct
           pps "if ("; print_exp_aux 0 fmt e; pps ") ";
           print_cond_aux fmt b_then opt_b_else
 
-      | While(e, b) ->
-        pps "while ("; print_exp_aux 0 fmt e; pps ") ";
+      | While(e, inv, b) ->
+        pps "while ("; print_exp_aux 0 fmt e; pps ")";
+        (match inv with
+         | None -> ()
+         | Some i -> pps " invariant "; print_exp_aux 0 fmt i);
+        pps " ";
         print_block_aux fmt b
 
       | For(decls, eo, so, body) ->
@@ -551,7 +555,9 @@ module AstML = struct
                           (string_of_list string_of_vdecl_aux d) 
                           (string_of_option string_of_exp e)
                           (string_of_option string_of_stmt s) (string_of_block b)
-    | While (e,b) -> sp "While (%s, %s)" (string_of_exp e) (string_of_block b)
+    | While (e,inv,b) -> sp "While (%s, %s, %s)" (string_of_exp e)
+                            (match inv with None -> "None" | Some i -> sp "Some %s" (string_of_exp i))
+                            (string_of_block b)
     | Commute (var,phi,bl, pre,post) -> 
       sp "Commute (%s, %s, %s, %s, %s)"
         begin match var with
