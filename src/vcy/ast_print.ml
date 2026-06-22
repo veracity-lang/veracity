@@ -313,7 +313,8 @@ module AstPP = struct
             end
           else pps "{ }"
       | Raise _ -> raise @@ NotImplemented "print_stmt_aux Raise"
-      | Assert _ -> raise @@ NotImplemented "print_stmt_aux Assert"
+      | Assert(e) ->
+        pps "assert("; print_exp_aux 0 fmt e; pps ");"
       | Assume(e) ->
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
       | Havoc(e) ->

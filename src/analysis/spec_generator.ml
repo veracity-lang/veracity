@@ -619,7 +619,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
           let havoc_id = id^"_havoc" in
           let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
-          EExists([(Var havoc_id, TInt (* TODO: make type dynamic *))], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
+          let havoc_sty =
+            match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+            | Some ((_, ty), _) -> sty_of_ty ty
+            | None ->
+                if List.mem id heap_model_vars
+                then Smt.TArray (Smt.TInt, Smt.TInt)
+                else Smt.TInt
+          in
+          EExists([(Var havoc_id, havoc_sty)], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
 
         | Require(e) ->
           let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
@@ -634,7 +642,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let modified =
             loop_modified_vars body.elt
             |> List.sort_uniq String.compare
-            |> List.filter (Hashtbl.mem vctrs)
+            |> List.filter (fun id ->
+                (* Include variables already tracked, global state variables,
+                   and heap model vars — so the invariant is evaluated at
+                   the post-loop state of all variables the body can modify. *)
+                Hashtbl.mem vctrs id
+                || List.exists (fun ((vid,_),_) -> String.equal vid id) !gstates
+                || List.mem id heap_model_vars)
           in
           (* Bump version counter for each modified variable (side-effects vctrs). *)
           let havoc_triples = List.map (fun id ->
@@ -799,7 +813,28 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
-  (* Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec); *)
+  (* When query dumping is active (e.g. --html), write the compiled Servois2
+     spec to a file alongside the SMT query files.  The post-condition of each
+     method is the SMT formula produced by compile_block_to_smt, so the While
+     → ∃(loop_havoc). let … in (inv ∧ ¬guard) ∧ tail transformation is visible
+     in the "post:" section of whichever method contains the While loop. *)
+  if !Servois2.Util.dump_queries then begin
+    (try
+      let path = Servois2.Util.outfile "veracity_spec.smt" in
+      let oc = open_out path in
+      let pr fmt = Printf.fprintf oc fmt in
+      pr "; state variables\n";
+      List.iter (fun (v, ty) ->
+        pr ";   %s : %s\n" (string_of_var v) (string_of_ty ty)
+      ) spec.state;
+      List.iter (fun (m : method_spec) ->
+        pr "\n; --- method: %s ---\n" m.name;
+        pr "; pre:\n%s\n" (string_of_smt m.pre);
+        pr "\n; post:\n%s\n" (string_of_smt m.post)
+      ) spec.methods;
+      close_out oc
+    with _ -> ())
+  end;
   spec, mnames
 
 (* ── Assert verification condition generator ─────────────────────────────── *)
