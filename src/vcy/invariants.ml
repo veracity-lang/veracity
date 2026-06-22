@@ -7,7 +7,7 @@ open Util
    it through the existing assert-VCG infrastructure.
    Returns one result per assert in the block (there is exactly one). *)
 let check_while_invariant
-    (g : global_env)
+    (_g : global_env)
     (defs : ty bindlist)
     (guard : exp node)
     (inv   : exp node)
@@ -17,9 +17,10 @@ let check_while_invariant
   let assume_stmt = no_loc @@ Assume (no_loc @@ Bop (And, inv, guard)) in
   let assert_stmt = no_loc @@ Assert inv in
   let augmented : block = [assume_stmt] @ body.elt @ [assert_stmt] in
-  let global_binds = List.map (fun (id,(ty,_)) -> (id, ty)) g.globals in
-  let vars = defs @ global_binds in
-  Analyze.check_asserts_of_block augmented vars prover
+  (* defs already contains global bindings (added by check_prog before
+     dispatching into check_block); adding them again would cause duplicate
+     SMT declarations for every global variable. *)
+  Analyze.check_asserts_of_block augmented defs prover
 
 (* Recurse through a block, threading accumulated local type bindings so that
    variables declared before a While are visible to its invariant check. *)
