@@ -225,9 +225,17 @@ let check_asserts_in_prog (prog: Ast.prog)
     | _ -> ()
   ) prog
 
-let verify_of_block e genv _ blks vars pre post : bool option * bool option =
+let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
-  Servois2.Verify.verify ~options:!Util.servois2_verify_option spec m1 m2 cond,
-  Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
+  begin match cv with
+  | CommuteVarLM -> Servois2.Solve.mode := Servois2.Solve.LeftMover
+  | CommuteVarRM -> Servois2.Solve.mode := Servois2.Solve.RightMover
+  | _ -> () end;
+  let result =
+    Servois2.Verify.verify ~options:!Util.servois2_verify_option spec m1 m2 cond,
+    Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
+  in
+  Servois2.Solve.mode := Servois2.Solve.Bowtie;
+  result
