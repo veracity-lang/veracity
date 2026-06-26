@@ -140,6 +140,8 @@ prog:
 decl:
   | ty=ty name=IDENT EQ init=exp(*gexp*) SEMI
     { Gvdecl (loc $startpos $endpos { name; ty; init }) }
+  | ty=ty name=UIDENT EQ init=exp(*gexp*) SEMI
+    { Gvdecl (loc $startpos $endpos { name; ty; init }) }
   | (*p=pure*) mrtyp=ty mname=IDENT LPAREN args=arglist RPAREN body=block
     { Gmdecl (loc $startpos $endpos { pure=false; mrtyp; mname; args; body }) }
   | mrtyp=ty mname=IDENT LPAREN args=arglist RPAREN FUNC e=exp SEMI
