@@ -427,6 +427,7 @@ module RunInfer : Runner = struct
   let no_cache = ref true
   let diagram = ref false
   let generate_html = ref false
+  let open_html = ref false
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -438,7 +439,7 @@ module RunInfer : Runner = struct
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
     ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke2), " Use improved poke heuristic (default: simple)"
-    ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"    
+    ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"
     ; "--mcpeak-max", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max), " Use model counting based synthesis with strategy: maximum-coverage"
     ; "--mcpeak-max-poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max_poke), " Use model counting based synthesis with strategy: maximum-coverage, then poke2"
     ; "--lattice-timeout", Arg.Float (fun f -> lattice_timeout := Some f), " Set the time limit for lattice construction"
@@ -449,6 +450,7 @@ module RunInfer : Runner = struct
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
     ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
     ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
@@ -536,7 +538,8 @@ module RunInfer : Runner = struct
             ~session_dir:sdir
             ~records:!Util.commute_records
           in
-          Printf.printf "HTML report: %s\n" out
+          Printf.printf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
         | None -> ()
       end
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
@@ -553,6 +556,7 @@ module RunVerify : Runner = struct
   let anons = ref []
   let cond = ref false
   let generate_html = ref false
+  let open_html = ref false
 
 
   let anon_fun (v : string) =
@@ -574,6 +578,7 @@ module RunVerify : Runner = struct
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
     ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
     ] |>
     Arg.align
 
@@ -638,7 +643,8 @@ module RunVerify : Runner = struct
             ~session_dir:sdir
             ~records:!Util.commute_records
           in
-          Printf.printf "HTML report: %s\n" out
+          Printf.printf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
         | None -> ()
       end
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
