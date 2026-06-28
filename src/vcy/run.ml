@@ -527,9 +527,7 @@ module RunInfer : Runner = struct
       Servois2.Util.diagram      := !diagram;
       Servois2.Util.dump_queries := !diagram
     end;
-    match anons with
-    | [prog] ->
-      infer_phis prog (get_prover ());
+    let generate_html_report prog =
       if html then begin
         match !Util.session_dir with
         | Some sdir ->
@@ -542,6 +540,11 @@ module RunInfer : Runner = struct
           if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
         | None -> ()
       end
+    in
+    match anons with
+    | [prog] ->
+      Fun.protect ~finally:(fun () -> generate_html_report prog)
+        (fun () -> infer_phis prog (get_prover ()))
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 
@@ -632,9 +635,7 @@ module RunVerify : Runner = struct
       Util.commute_records := [];
       Printf.eprintf "Session directory: %s\n" sdir
     end;
-    match anons with
-    | [prog] ->
-      verify prog;
+    let generate_html_report prog =
       if html then begin
         match !Util.session_dir with
         | Some sdir ->
@@ -647,6 +648,15 @@ module RunVerify : Runner = struct
           if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
         | None -> ()
       end
+    in
+    match anons with
+    | [prog] ->
+      let commute_failed = ref false in
+      Fun.protect ~finally:(fun () -> generate_html_report prog)
+        (fun () ->
+          try verify prog
+          with Ast.CommuteFailure _ -> commute_failed := true);
+      if !commute_failed then exit 1
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 

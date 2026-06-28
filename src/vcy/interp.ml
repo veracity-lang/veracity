@@ -873,50 +873,52 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
             Servois2.Diagram.diagram_counter := 0;
             Some d
         in
-        begin match Analyze.verify_of_block e g var bl defs pre post with
-        | Some b, compl ->
-          let compl_str =
-            match compl with
-            | Some true  -> "true"
-            | Some false -> "false"
-            | None       -> "unknown"
-          in
-          if not b then begin
-            let msg = Printf.sprintf "Condition at %s verified as incorrect: %s"
-              (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
-            if not !silent then begin
-              if not !emit_quiet then Printf.printf "%s\n" msg
-              else print_string "incorrect\n"
-            end;
-            raise @@ CommuteFailure (msg, h.loc)
-          end else begin
-            if not !silent then begin
-              if not !emit_quiet then
-                Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
-                  (Range.string_of_range h.loc)
-                  (AstPP.string_of_exp e)
-                  compl_str
-              else Printf.printf "correct\n%s\n" compl_str
-            end
-          end
-        | None, _ ->
-          if not !silent then begin
-            if not !emit_quiet then
-              Printf.printf "Condition at %s unable to verify: %s\n"
-                (Range.string_of_range h.loc)
-                (AstPP.string_of_exp e)
-            else print_string "failure\n"
-          end
-        end;
-        Servois2.Util.output_dir := None;
-        (match !Util.session_dir, commute_subdir with
-         | Some _, Some subdir ->
-           Util.commute_records := !Util.commute_records @ [{
-             Util.loc_str   = Range.string_of_range h.loc;
-             Util.condition = AstPP.string_of_exp e;
-             Util.subdir;
-           }]
-         | _ -> ())
+        Fun.protect
+          ~finally:(fun () ->
+            Servois2.Util.output_dir := None;
+            match !Util.session_dir, commute_subdir with
+            | Some _, Some subdir ->
+              Util.commute_records := !Util.commute_records @ [{
+                Util.loc_str   = Range.string_of_range h.loc;
+                Util.condition = AstPP.string_of_exp e;
+                Util.subdir;
+              }]
+            | _ -> ())
+          (fun () ->
+            match Analyze.verify_of_block e g var bl defs pre post with
+            | Some b, compl ->
+              let compl_str =
+                match compl with
+                | Some true  -> "true"
+                | Some false -> "false"
+                | None       -> "unknown"
+              in
+              if not b then begin
+                let msg = Printf.sprintf "Condition at %s verified as incorrect: %s"
+                  (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
+                if not !silent then begin
+                  if not !emit_quiet then Printf.printf "%s\n" msg
+                  else print_string "incorrect\n"
+                end;
+                raise @@ CommuteFailure (msg, h.loc)
+              end else begin
+                if not !silent then begin
+                  if not !emit_quiet then
+                    Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
+                      (Range.string_of_range h.loc)
+                      (AstPP.string_of_exp e)
+                      compl_str
+                  else Printf.printf "correct\n%s\n" compl_str
+                end
+              end
+            | None, _ ->
+              if not !silent then begin
+                if not !emit_quiet then
+                  Printf.printf "Condition at %s unable to verify: %s\n"
+                    (Range.string_of_range h.loc)
+                    (AstPP.string_of_exp e)
+                else print_string "failure\n"
+              end)
       | PhiInf -> () end;
     let s = Commute (var, phi, bl, pre, post) in
     node_app
