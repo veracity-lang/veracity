@@ -617,17 +617,31 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           in
           let id = base_id e in
           let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
-          let havoc_id = id^"_havoc" in
-          let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
-          let havoc_sty =
+          let is_tloc =
             match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
-            | Some ((_, ty), _) -> sty_of_ty ty
-            | None ->
-                if List.mem id heap_model_vars
-                then Smt.TArray (Smt.TInt, Smt.TInt)
-                else Smt.TInt
+            | Some ((_, TLoc), _) -> true
+            | _ -> false
           in
-          EExists([(Var havoc_id, havoc_sty)], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
+          if is_tloc then begin
+            (* tloc havoc: allocate a fresh heap location rather than picking any integer *)
+            let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
+            let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+            ELet ([(new_id, heapallocv)],
+              ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt 1)])],
+                compile_block_to_smt tl vctrs))
+          end else begin
+            let havoc_id = id^"_havoc" in
+            let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
+            let havoc_sty =
+              match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+              | Some ((_, ty), _) -> sty_of_ty ty
+              | None ->
+                  if List.mem id heap_model_vars
+                  then Smt.TArray (Smt.TInt, Smt.TInt)
+                  else Smt.TInt
+            in
+            EExists([(Var havoc_id, havoc_sty)], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
+          end
 
         | Require(e) ->
           let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
@@ -754,17 +768,26 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
       EBop (Gte, EVar (Var v), EConst (CInt 0));
       EBop (Lt, EVar (Var v), EVar (Var "heap_alloc"))
     ]) loc_varnames in
-    (* Closed-world: each loc var's next pointer is null or another tracked loc var.
-       This prevents the solver from routing next pointers through fresh allocation
-       addresses, which would cause the bijection check in states_equal to fail. *)
-    let valid_next_targets = smt_negone () :: List.map (fun u -> EVar (Var u)) loc_varnames in
-    let heap_closed = List.map (fun v ->
-      ELop (Or, List.map (fun tgt ->
-        EBop (Eq, EFunc ("select", [EVar (Var "heap_next"); EVar (Var v)]), tgt)
-      ) valid_next_targets)
+    (* Each loc var's next pointer is either null (-1) or a valid heap address.
+       This is weaker than the original closed-world constraint (which required
+       heap_next to point only to tracked TLoc variables), allowing next pointers
+       to address heap cells that are not currently tracked as named TLoc vars.
+       Safe as long as blocks in the commute check do not write fresh allocation
+       addresses into heap_next: in that case the states_equal bijection handles
+       untracked next values via its else branch (raw equality), which holds when
+       both orderings leave those heap_next entries unmodified. *)
+    let heap_next_valid = List.map (fun v ->
+      let sel = EFunc ("select", [EVar (Var "heap_next"); EVar (Var v)]) in
+      ELop (Or, [
+        EBop (Eq, sel, smt_negone ());
+        ELop (And, [
+          EBop (Gte, sel, EConst (CInt 0));
+          EBop (Lt,  sel, EVar (Var "heap_alloc"))
+        ])
+      ])
     ) loc_varnames in
     let method_spec = { name = m.mname; args = args; ret = ret;
-                        pre = ELop (And, ([!pre; heap_inv] @ loc_valid @ heap_closed));
+                        pre = ELop (And, ([!pre; heap_inv] @ loc_valid @ heap_next_valid));
                         post = post; terms = terms} in
 
     terms_list := [];
