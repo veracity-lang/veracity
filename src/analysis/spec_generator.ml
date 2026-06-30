@@ -14,6 +14,9 @@ let gstates = ref []
 
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
+(* Allocation-validity conditions accumulated during exp_to_smt_exp for heap
+   dereferences; consumed statement-by-statement in compile_block_to_smt. *)
+let deref_conds : sexp list ref = ref []
 
 (*
   heap_alloc : Int (next fresh ID)
@@ -414,13 +417,17 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
     | HDerefValue ( l ) ->
         let f x = exp_to_smt_exp x side ~indexed vctrs in
         let l', v_binds = f l in
-        (* get the current heap_value variable *)
+        let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+        deref_conds := !deref_conds @
+          [ EBop (Gte, l', EConst (CInt 0)); EBop (Lt, l', ha) ];
         let hv_var = EVar (Var (set_variable_id "heap_value" side vctrs indexed)) in
         EFunc ("select", [hv_var; l']), v_binds
     | HDerefNext ( l ) ->
         let f x = exp_to_smt_exp x side ~indexed vctrs in
         let l', v_binds = f l in
-        (* get the current heap_next variable *)
+        let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+        deref_conds := !deref_conds @
+          [ EBop (Gte, l', EConst (CInt 0)); EBop (Lt, l', ha) ];
         let hv_var = EVar (Var (set_variable_id "heap_next" side vctrs indexed)) in
         EFunc ("select", [hv_var; l']), v_binds
 
@@ -489,6 +496,17 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
     | [] -> Fun.id
     | exp -> fun (e) -> ELet(exp, e)
   in
+  (* Drain deref_conds and wrap [rest] with each condition as a conjunct. *)
+  let consume_deref_conds () =
+    let cs = !deref_conds in deref_conds := []; cs
+  in
+  let with_conds conds rest =
+    List.fold_right (fun c acc -> ELop (And, [c; acc])) conds rest
+  in
+  (* Validity conditions for a pointer: 0 <= loc < heap_alloc. *)
+  let alloc_cond loc_smt ha_var =
+    [ EBop (Gte, loc_smt, EConst (CInt 0)); EBop (Lt, loc_smt, ha_var) ]
+  in
   let rec compile_block_to_smt (b: block) (vctrs : (string, int ref) Hashtbl.t) : sexp =
     match b with
       | [] -> get_postconditions ()
@@ -498,12 +516,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let name_exp_smt, _ = exp_to_smt_exp name_exp right vctrs  in
           let index_exp_smt, _ = exp_to_smt_exp index_exp right vctrs  in
           let exp_smt, _ = exp_to_smt_exp exp right vctrs  in
+          let conds = consume_deref_conds () in
           let path_name_exp_smt, _ = match exp_to_smt_exp name_exp left vctrs with
                                   | Smt.EVar v, b -> v ,b
                                   | _, _ -> failwith "left of assignment should be variable"  in
 
           let store_smt = Smt.EFunc ("store", [name_exp_smt; index_exp_smt; exp_smt]) in
-          ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
+          with_conds conds @@ ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
         
         (* Heap Allocation *)
         | Assn (exp, {elt = HeapAlloc ({ elt = val_exp; loc=l1 }, { elt = loc_exp; loc=l2}) as alloce; loc = ll }) ->
@@ -547,9 +566,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | Assn ({elt = HDerefValue loc_exp; _}, val_exp) ->
           let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
           let val_smt, val_binds = exp_to_smt_exp val_exp right vctrs in
+          let nested = consume_deref_conds () in
+          let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
+          let conds = nested @ alloc_cond loc_smt ha in
           let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
           let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
-          bind (loc_binds @ val_binds) @@
+          with_conds conds @@
+            bind (loc_binds @ val_binds) @@
             ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; val_smt])],
               compile_block_to_smt tl vctrs)
 
@@ -557,14 +580,19 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | Assn ({elt = HDerefNext loc_exp; _}, next_exp) ->
           let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
           let next_smt, next_binds = exp_to_smt_exp next_exp right vctrs in
+          let nested = consume_deref_conds () in
+          let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
+          let conds = nested @ alloc_cond loc_smt ha in
           let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
           let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
-          bind (loc_binds @ next_binds) @@
+          with_conds conds @@
+            bind (loc_binds @ next_binds) @@
             ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; next_smt])],
               compile_block_to_smt tl vctrs)
 
         | Assn (path, e) ->
           let e_rtn, e_binds = exp_to_smt_exp e right vctrs in
+          let conds = consume_deref_conds () in
 
           let path_smt, _ = begin match exp_to_smt_exp path left vctrs with
                           | EVar e, b -> e, b
@@ -572,12 +600,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
                           end
           in
 
-          bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
+          with_conds conds @@
+            bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
 
-        | Decl (id, (ty, expn)) -> 
+        | Decl (id, (ty, expn)) ->
           let e_rtn, e_binds = exp_to_smt_exp expn right vctrs in
-        
-          bind e_binds @@ ELet ([(Var id, e_rtn)], compile_block_to_smt tl vctrs)
+          let conds = consume_deref_conds () in
+
+          with_conds conds @@
+            bind e_binds @@ ELet ([(Var id, e_rtn)], compile_block_to_smt tl vctrs)
 
         | If (exn, bln1, bln2) ->  
           (* requires := !requires ^ ("(" ^ (exp_to_smt_exp exn 0)^ ")"); *)
@@ -623,24 +654,33 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           
         | Assume(e) ->
           let exp_smt,_ = exp_to_smt_exp e right vctrs  in
-          ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
+          let conds = consume_deref_conds () in
+          with_conds conds @@ ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
 
         | Havoc(e) ->
           let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
           (match e.elt with
           | HDerefValue loc_exp ->
             let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+            let nested = consume_deref_conds () in
+            let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
+            let conds = nested @ alloc_cond loc_smt ha in
             let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
             let havoc_id = "heap_value_havoc_val" in
-            bind loc_binds @@
+            with_conds conds @@
+              bind loc_binds @@
               EExists ([(Var havoc_id, Smt.TInt)],
                 ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; EVar (Var havoc_id)])],
                   compile_block_to_smt tl vctrs))
           | HDerefNext loc_exp ->
             let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+            let nested = consume_deref_conds () in
+            let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
+            let conds = nested @ alloc_cond loc_smt ha in
             let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
             let havoc_id = "heap_next_havoc_val" in
-            bind loc_binds @@
+            with_conds conds @@
+              bind loc_binds @@
               EExists ([(Var havoc_id, Smt.TInt)],
                 ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; EVar (Var havoc_id)])],
                   compile_block_to_smt tl vctrs))
