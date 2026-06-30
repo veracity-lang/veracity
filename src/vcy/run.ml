@@ -486,7 +486,7 @@ module RunInfer : Runner = struct
     if Analyze.prog_has_havoc prog && not !use_ae then
       failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     let env = Interp.initialize_env prog true in
-    Analyze.check_asserts_in_prog prog prover;
+    ignore (Analyze.check_asserts_in_prog prog prover);
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
@@ -660,6 +660,38 @@ module RunVerify : Runner = struct
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 
+module RunAssertions : Runner = struct
+  let usage_msg exe_name =
+    "Usage: " ^ exe_name ^ " assertions [<flags>] <vcy program>"
+
+  let anons = ref []
+  let prover_name = ref ""
+
+  let anon_fun (v : string) = anons := v :: !anons
+
+  let speclist =
+    [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
+    ] |> Arg.align
+
+  let get_prover () : (module Servois2.Provers.Prover) =
+    match !prover_name |> String.lowercase_ascii with
+    | "cvc4"    -> (module Servois2.Provers.ProverCVC4)
+    | "cvc5"    -> (module Servois2.Provers.ProverCVC5)
+    | "z3"      -> (module Servois2.Provers.ProverZ3)
+    | ""        -> (module Servois2.Provers.ProverCVC5)
+    | s         -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
+
+  let run () =
+    Arg.current := 1;
+    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
+    match List.rev !anons with
+    | [prog_name] ->
+        let prog = Driver.parse_oat_file prog_name in
+        let prover = get_prover () in
+        if not (Analyze.check_asserts_in_prog prog prover) then exit 1
+    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+end
+
 module RunInvariants : Runner = struct
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " invariants [<flags>] <vcy program>"
@@ -723,19 +755,21 @@ type command =
   | CmdInfer
   | CmdVerify
   | CmdTranslate
+  | CmdAssertions
   | CmdInvariants
 
 let command_map =
-  [ "help",      CmdHelp
-  ; "parse",     CmdParse
-  ; "interp",    CmdInterp
+  [ "help",       CmdHelp
+  ; "parse",      CmdParse
+  ; "interp",     CmdInterp
   (*; "interpret", CmdInterp*)
-  ; "interface", CmdInterface
+  ; "interface",  CmdInterface
   (*; "yaml",      CmdYaml*)
   (*; "phi",       CmdPhi*)
   ; "infer",      CmdInfer
   ; "verify",     CmdVerify
   ; "translate",  CmdTranslate
+  ; "assertions", CmdAssertions
   ; "invariants", CmdInvariants
   ]
 
@@ -748,10 +782,11 @@ let runner_map : (command * (module Runner)) list =
   ; CmdInfer,      (module RunInfer)
   ; CmdVerify,     (module RunVerify)
   ; CmdTranslate,  (module RunTranslate)
+  ; CmdAssertions, (module RunAssertions)
   ; CmdInvariants, (module RunInvariants)
   ]
 
-let display_help_message exe_name = 
+let display_help_message exe_name =
   let details =
     "Commands:\n" ^
     "  help        Display this message\n" ^
@@ -762,6 +797,7 @@ let display_help_message exe_name =
     (*"  phi         Generate commutativty condition between two methods\n" ^*)
     "  infer       Infer and emit all blank commutativity conditions\n" ^
     "  verify      Verify all provided commutativity conditions\n" ^
+    "  assertions  Check all assert() statements in a program\n" ^
     "  invariants  Check all annotated while-loop invariants\n" ^
     "  translate   Translate program to C\n "
   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details

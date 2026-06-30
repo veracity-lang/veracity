@@ -186,7 +186,6 @@ let check_asserts_of_block (block: Ast.block)
     : (Range.t * Servois2.Provers.solve_result) list =
   let embedding = generate_embedding_map vars in
   Spec_generator.gstates := embedding;
-  Spec_generator.use_heap := false;
   Hashtbl.clear Spec_generator.variable_ctr_list;
   List.iter (fun ((id,_),_) ->
     Hashtbl.replace Spec_generator.variable_ctr_list id (ref 0)
@@ -207,23 +206,26 @@ let check_asserts_of_block (block: Ast.block)
   ) vcs
 
 (* Scan every method in prog and check its assert() statements. *)
+(* Returns true iff every assertion in every method was verified. *)
 let check_asserts_in_prog (prog: Ast.prog)
-    (prover: (module Servois2.Provers.Prover)) =
+    (prover: (module Servois2.Provers.Prover)) : bool =
+  let all_ok = ref true in
   List.iter (function
     | Ast.Gmdecl m ->
       let meth = m.elt in
       let params = List.map (fun (ty, id) -> (id, ty)) meth.args in
       let results = check_asserts_of_block meth.body.elt params prover in
       List.iter (fun (loc, result) ->
-        Printf.printf "Assert at %s: %s\n"
-          (Range.string_of_range loc)
-          (match result with
-           | Servois2.Provers.Unsat   -> "verified"
-           | Servois2.Provers.Sat _   -> "FAILED (counterexample exists)"
-           | Servois2.Provers.Unknown -> "unknown")
+        let status = match result with
+          | Servois2.Provers.Unsat   -> "verified"
+          | Servois2.Provers.Sat _   -> (all_ok := false; "FAILED (counterexample exists)")
+          | Servois2.Provers.Unknown -> (all_ok := false; "unknown")
+        in
+        Printf.printf "Assert at %s: %s\n" (Range.string_of_range loc) status
       ) results
     | _ -> ()
-  ) prog
+  ) prog;
+  !all_ok
 
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in

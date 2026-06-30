@@ -940,34 +940,122 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
    from preceding assignments is in scope when we reach an assert.  For each
    assert(e) we record (location, vc) where vc is the boolean SMT expression
    that is satisfiable iff the assertion could fail.  Succeeding asserts are
-   treated as assumes for subsequent VCs. *)
+   treated as assumes for subsequent VCs.
+
+   Heap operations (HDerefNext/HDerefValue reads and writes, HeapAlloc, Havoc)
+   are modelled using the same heap_alloc/heap_value/heap_next versioning as
+   compile_block_to_smt.  When the block uses heap operations the initial
+   versioned heap variables (heap_alloc_1 etc.) are added to extra_vars so
+   that assert_smt_query emits the necessary declare-fun stanzas. *)
 let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * sexp) list =
   let bind = function [] -> Fun.id | exp -> fun e -> ELet(exp, e) in
+  let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
   let vcs = ref [] in
+  (* Wrapper around exp_to_smt_exp that discards any deref_conds side-effects.
+     The allocation-validity conditions are not needed for assertion VCGen. *)
+  let etse e s ?(indexed=true) v =
+    let r = exp_to_smt_exp e s ~indexed v in
+    deref_conds := [];
+    r
+  in
+  (* If the block uses heap operations, initialise heap model variables in the
+     version counter table (counter starts at 1, matching compile_block_to_smt)
+     and declare their initial versions as free SMT variables. *)
+  let has_heap = block_uses_heap b in
+  if has_heap then begin
+    List.iter (fun id ->
+      if not (Hashtbl.mem variable_ctr_list id) then
+        Hashtbl.add variable_ctr_list id (ref 1)
+      else
+        Hashtbl.replace variable_ctr_list id (ref 1)
+    ) heap_model_vars;
+    extra_vars := !extra_vars @ [
+      (("heap_alloc_1", TInt),      ETInt  "heap_alloc_1");
+      (("heap_value_1", TArr TInt), ETArr ("heap_value_1", Smt.TInt));
+      (("heap_next_1",  TArr TInt), ETArr ("heap_next_1",  Smt.TInt));
+    ]
+  end;
   let rec go (stmts: block) (vctrs: (string, int ref) Hashtbl.t) (wrap: sexp -> sexp) =
     match stmts with
     | [] -> ()
     | stmt :: tl ->
       begin match stmt.elt with
       | Assert e ->
-          let e_smt, e_binds = exp_to_smt_exp e right vctrs in
+          let e_smt, e_binds = etse e right vctrs in
           let inner = bind e_binds e_smt in
           vcs := !vcs @ [(stmt.loc, wrap inner)];
           (* Use implication so subsequent VCs are checked *assuming* this
-             assertion holds, not in conjunction with it.  This avoids the
-             inconsistent-context problem when an assertion is false. *)
+             assertion holds, not in conjunction with it. *)
           go tl vctrs (fun k -> wrap (EBop (Imp, inner, k)))
+
+      | Require e ->
+          let e_smt, _ = etse e right ~indexed:false vctrs in
+          go tl vctrs (fun k -> wrap (EBop (Imp, e_smt, k)))
+
+      (* ── Heap allocation ─────────────────────────────────────────── *)
+      | Assn (exp, {elt = HeapAlloc ({elt = val_exp; loc=l1}, {elt = loc_exp; loc=l2}); _}) ->
+          begin try
+            let path_v = match etse exp left vctrs with EVar v, _ -> v | _ -> failwith "lhs" in
+            let v_smt, v_binds = etse {elt=val_exp; loc=l1} right vctrs in
+            let l_smt, l_binds = etse {elt=loc_exp; loc=l2} right vctrs in
+            let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
+            let heapnextv,  heapnextv'  = mk_var_pair "heap_next"  right vctrs in
+            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            go tl vctrs (fun k ->
+              wrap (bind (v_binds @ l_binds) @@
+                ELet ([(path_v, heapallocv)],
+                  ELet ([to_var heapallocv', ELop(Add, [heapallocv; EConst(CInt 1)])],
+                    ELet ([to_var heapnextv',  EFunc("store", [heapnextv;  heapallocv; l_smt])],
+                      ELet ([to_var heapvaluev', EFunc("store", [heapvaluev; heapallocv; v_smt])],
+                        k))))))
+          with _ -> go tl vctrs wrap end
+
+      (* ── Heap field writes ───────────────────────────────────────── *)
+      | Assn ({elt = HDerefValue loc_exp; _}, val_exp) ->
+          begin try
+            let loc_smt, loc_binds = etse loc_exp right vctrs in
+            let val_smt, val_binds = etse val_exp right vctrs in
+            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            go tl vctrs (fun k ->
+              wrap (bind (loc_binds @ val_binds) @@
+                ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; val_smt])], k)))
+          with _ -> go tl vctrs wrap end
+
+      | Assn ({elt = HDerefNext loc_exp; _}, next_exp) ->
+          begin try
+            let loc_smt, loc_binds = etse loc_exp right vctrs in
+            let next_smt, next_binds = etse next_exp right vctrs in
+            let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
+            go tl vctrs (fun k ->
+              wrap (bind (loc_binds @ next_binds) @@
+                ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; next_smt])], k)))
+          with _ -> go tl vctrs wrap end
+
+      (* ── Array write ─────────────────────────────────────────────── *)
+      | Assn ({elt = Index (name_exp, index_exp); _}, exp) ->
+          begin try
+            let name_smt, _ = etse name_exp right vctrs in
+            let idx_smt,  _ = etse index_exp right vctrs in
+            let e_smt, e_binds = etse exp right vctrs in
+            let arr_new = match etse name_exp left vctrs with
+              EVar v, _ -> v | _ -> failwith "lhs array" in
+            let store = EFunc ("store", [name_smt; idx_smt; e_smt]) in
+            go tl vctrs (fun k -> wrap (bind e_binds @@ ELet ([(arr_new, store)], k)))
+          with _ -> go tl vctrs wrap end
+
+      (* ── Scalar / general assignment ─────────────────────────────── *)
       | Assn (path, e) ->
           begin try
-            let e_rtn, e_binds = exp_to_smt_exp e right vctrs in
-            let path_smt = match exp_to_smt_exp path left vctrs with
+            let e_rtn, e_binds = etse e right vctrs in
+            let path_smt = match etse path left vctrs with
               | EVar v, _ -> v
               | _ -> failwith "assert VCG: lhs of assignment must be a variable" in
             go tl vctrs (fun k -> wrap (bind e_binds @@ ELet ([(path_smt, e_rtn)], k)))
           with _ -> go tl vctrs wrap end
+
       | Decl (id, (ty, expn)) ->
           begin try
-            let e_rtn, e_binds = exp_to_smt_exp expn right vctrs in
+            let e_rtn, e_binds = etse expn right vctrs in
             go tl vctrs (fun k -> wrap (bind e_binds @@ ELet ([(Var id, e_rtn)], k)))
           with _ ->
             (* Treat as "int id = 1; havoc(id)": id is unconstrained.
@@ -982,10 +1070,102 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
             Hashtbl.replace vctrs id (ref 0);
             go tl vctrs wrap
           end
+
+      (* ── Havoc ───────────────────────────────────────────────────── *)
+      | Havoc e ->
+          begin match e.elt with
+          | HDerefValue loc_exp ->
+            begin try
+              let loc_smt, loc_binds = etse loc_exp right vctrs in
+              let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+              let hvid = "heap_value_havoc_val" in
+              go tl vctrs (fun k ->
+                wrap (bind loc_binds @@
+                  EExists ([(Var hvid, Smt.TInt)],
+                    ELet ([to_var heapvaluev',
+                           EFunc ("store", [heapvaluev; loc_smt; EVar (Var hvid)])], k))))
+            with _ -> go tl vctrs wrap end
+          | HDerefNext loc_exp ->
+            begin try
+              let loc_smt, loc_binds = etse loc_exp right vctrs in
+              let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
+              let hvid = "heap_next_havoc_val" in
+              go tl vctrs (fun k ->
+                wrap (bind loc_binds @@
+                  EExists ([(Var hvid, Smt.TInt)],
+                    ELet ([to_var heapnextv',
+                           EFunc ("store", [heapnextv; loc_smt; EVar (Var hvid)])], k))))
+            with _ -> go tl vctrs wrap end
+          | _ ->
+            begin try
+              let rec base_id = function
+                | {elt=Id n;_} -> n | {elt=Index(b,_);_} -> base_id b
+                | _ -> failwith "unsupported havoc lvalue" in
+              let id = base_id e in
+              let new_id = match fst @@ etse (no_loc (Id id)) left vctrs with
+                EVar v -> v | _ -> failwith "havoc" in
+              let havoc_id = id ^ "_havoc" in
+              let exp_smt, _ = etse (no_loc @@ Id havoc_id) right vctrs in
+              let havoc_sty = match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+                | Some ((_, ty), _) -> sty_of_ty ty
+                | None -> Smt.TInt in
+              go tl vctrs (fun k ->
+                wrap (EExists ([(Var havoc_id, havoc_sty)], ELet ([new_id, exp_smt], k))))
+            with _ -> go tl vctrs wrap end
+          end
+
+      (* ── Conditional ─────────────────────────────────────────────── *)
+      | If (cond_exp, then_blk, else_blk) ->
+          begin try
+            let c_smt, c_binds = etse cond_exp right vctrs in
+            let temp = make_temp_value_of_htbl vctrs in
+            (* Process each branch (plus the tail) under the appropriate guard.
+               tl is included in both branches so it is not processed again. *)
+            go (then_blk.elt @ tl) vctrs
+              (fun k -> wrap (bind c_binds @@ EITE (c_smt, k, EConst (CBool true))));
+            ignore (reset_to_local_variable_ctrs temp vctrs);
+            go (else_blk.elt @ tl) vctrs
+              (fun k -> wrap (bind c_binds @@ EITE (c_smt, EConst (CBool true), k)))
+          with _ -> go tl vctrs wrap end
+
+      (* ── Loop with verified invariant ────────────────────────────── *)
+      | While (guard, Some inv, body) ->
+          begin try
+            let modified =
+              loop_modified_vars body.elt
+              |> List.sort_uniq String.compare
+              |> List.filter (fun id ->
+                  Hashtbl.mem vctrs id
+                  || List.exists (fun ((vid,_),_) -> String.equal vid id) !gstates
+                  || List.mem id heap_model_vars)
+            in
+            let havoc_triples = List.filter_map (fun id ->
+              let hv = id ^ "_loop_havoc_vc" in
+              let sty = match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+                | Some ((_, ty), _) -> sty_of_ty ty
+                | None ->
+                    if List.mem id heap_model_vars
+                    then Smt.TArray (Smt.TInt, Smt.TInt)
+                    else Smt.TInt in
+              (match fst @@ etse (no_loc (Id id)) left vctrs with
+               | EVar v -> Some (v, Smt.EVar (Smt.Var hv), hv, sty)
+               | _ -> None
+               | exception _ -> None)
+            ) modified in
+            let inv_smt,   _ = etse inv   right vctrs in
+            let guard_smt, _ = etse guard right vctrs in
+            let exit_cond = ELop (And, [inv_smt; EUop (Not, guard_smt)]) in
+            let existentials = List.map (fun (_, _, hv, sty) -> (Smt.Var hv, sty)) havoc_triples in
+            let lets = List.map (fun (nid, e, _, _) -> (nid, e)) havoc_triples in
+            go tl vctrs (fun k ->
+              wrap (EExists (existentials, ELet (lets, ELop (And, [exit_cond; k])))))
+          with _ -> go tl vctrs wrap end
+
       | Assume e ->
-          let e_smt, _ = exp_to_smt_exp e right vctrs in
+          let e_smt, _ = etse e right vctrs in
           (* assume P; assert Q  →  check P ⇒ Q, i.e. P ∧ ¬Q for SAT *)
           go tl vctrs (fun k -> wrap (EBop (Imp, e_smt, k)))
+
       | _ -> go tl vctrs wrap
       end
   in
