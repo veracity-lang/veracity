@@ -342,7 +342,8 @@ module AstPP = struct
     let pps = pp_print_string fmt in
     let ppsp = pp_print_space fmt in
     pp_open_hbox fmt ();
-    pps @@ Printf.sprintf "global %s =" gd.name; ppsp ();
+    print_ty_aux fmt gd.ty; ppsp ();
+    pps gd.name; pps " ="; ppsp ();
     print_exp_aux 0 fmt gd.init; pps ";";
     pp_close_box fmt ()
 

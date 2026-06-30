@@ -52,14 +52,6 @@ let svgs_of_subdir subdir =
     List.filter_map dot_to_svg dots
   with _ -> []
 
-(* Run perl examine.pl inside a subdir to generate servois2_examine.html. *)
-let run_examine_pl subdir =
-  let pl = Filename.concat subdir "examine.pl" in
-  if Sys.file_exists pl then begin
-    let cmd = Printf.sprintf "cd %s && perl examine.pl >/dev/null 2>&1"
-                (Filename.quote subdir) in
-    ignore (Sys.command cmd)
-  end
 
 let css = {|<style>
 *{box-sizing:border-box}
@@ -68,6 +60,8 @@ body{margin:0;padding:20px 24px;background:#1e1e1e;color:#d4d4d4;
 h1{color:#569cd6;margin:0 0 4px}
 .meta{color:#888;font-size:.85em;margin-bottom:18px}
 .meta code{color:#9cdcfe;background:#2d2d2d;padding:1px 5px;border-radius:3px}
+.layout{display:flex;gap:20px;align-items:flex-start}
+.src-panel{flex:1 1 auto;min-width:0;overflow-x:auto}
 table.src{border-collapse:collapse;width:100%;font-family:'Consolas','Monaco',monospace;
           font-size:.85em;background:#252526;border-radius:6px;overflow:hidden}
 table.src td{padding:1px 8px;white-space:pre;vertical-align:top}
@@ -76,17 +70,16 @@ table.src td{padding:1px 8px;white-space:pre;vertical-align:top}
 .code{color:#d4d4d4}
 tr.cm{background:#132236;cursor:pointer}
 tr.cm:hover{background:#1b3a5e}
+tr.cm.active{background:#1f3f6e}
 tr.cm .ln{color:#4ec9b0}
 tr.cm .code{color:#9cdcfe}
 .badge{display:inline-block;background:#0e639c;color:#fff;font-size:.72em;
        border-radius:3px;padding:0 5px;margin-left:10px;vertical-align:middle}
-/* modal */
-.backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100}
-.modal{display:none;position:fixed;top:50%;left:50%;
-       transform:translate(-50%,-50%);z-index:101;
-       background:#252526;border:1px solid #3c3c3c;border-radius:8px;
-       padding:24px;max-width:92vw;max-height:88vh;overflow-y:auto;min-width:500px}
-.modal h2{margin-top:0;color:#569cd6;font-size:1.1em}
+/* side diagram panel */
+.diag-panel{display:none;flex:0 0 460px;position:sticky;top:20px;
+            background:#252526;border:1px solid #3c3c3c;border-radius:8px;
+            padding:20px;max-height:calc(100vh - 40px);overflow-y:auto}
+.diag-panel h2{margin-top:0;color:#569cd6;font-size:1.1em}
 .mloc{color:#888;font-size:.82em;margin-bottom:8px}
 .mcond{background:#1a1a1a;border:1px solid #333;border-radius:4px;
        padding:10px 14px;font-family:monospace;color:#4ec9b0;
@@ -101,22 +94,34 @@ tr.cm .code{color:#9cdcfe}
 .closebtn:hover{color:#d4d4d4}
 </style>|}
 
-let js = {|<script>
+let js_prefix = {|<script>
+var _activeRow = null;
 function openModal(n){
-  document.getElementById('bd').style.display='block';
-  document.getElementById('m'+n).style.display='block';
+  var panel = document.getElementById('diag-panel');
+  var content = document.getElementById('diag-content');
+  var d = commuteData[n];
+  content.innerHTML =
+    '<span class="closebtn" onclick="closePanel()">&times;</span>' +
+    '<h2>Commute Block ' + n + '</h2>' +
+    '<div class="mloc">' + d.loc + '</div>' +
+    '<div class="mcond">' + d.cond + '</div>' +
+    '<div class="diagrams">' + d.diagrams + '</div>' +
+    '<div class="mlinks">' + d.link + '</div>';
+  panel.style.display = 'block';
+  if(_activeRow){ _activeRow.classList.remove('active'); }
+  var rows = document.querySelectorAll('tr.cm');
+  rows.forEach(function(r){ if(r.getAttribute('data-cid')==String(n)){ _activeRow=r; r.classList.add('active'); } });
 }
-function closeModal(n){
-  document.getElementById('bd').style.display='none';
-  document.getElementById('m'+n).style.display='none';
+function closePanel(){
+  document.getElementById('diag-panel').style.display='none';
+  if(_activeRow){ _activeRow.classList.remove('active'); _activeRow=null; }
 }
 document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'){
-    document.getElementById('bd').style.display='none';
-    document.querySelectorAll('.modal').forEach(function(m){m.style.display='none';});
-  }
+  if(e.key==='Escape') closePanel();
 });
-</script>|}
+|}
+
+let js_suffix = {|</script>|}
 
 let create_session_dir () =
   (* Filename.temp_file gives us a unique name; remove the dummy file,
@@ -127,10 +132,7 @@ let create_session_dir () =
   base
 
 let generate ~source_file ~session_dir ~records =
-  (* 1. Run perl examine.pl in each commute subdir to produce examine.html *)
-  List.iter (fun (r : Util.commute_record) -> run_examine_pl r.subdir) records;
-
-  (* 2. Read source *)
+  (* 1. Read source *)
   let source_text =
     try read_file source_file
     with _ ->
@@ -170,40 +172,44 @@ let generate ~source_file ~session_dir ~records =
         else "" in
       Buffer.add_string src_buf
         (Printf.sprintf
-           "<tr class=\"cm\" onclick=\"openModal(%d)\"><td class=\"ln\">%d</td>\
+           "<tr class=\"cm\" data-cid=\"%d\" onclick=\"openModal(%d)\"><td class=\"ln\">%d</td>\
             <td class=\"code\">%s%s</td></tr>\n"
-           cid lineno (html_escape line) badge)
+           cid cid lineno (html_escape line) badge)
   ) source_lines;
   Buffer.add_string src_buf "</table>\n";
 
-  (* 5. Build modals *)
-  let modal_buf = Buffer.create 8192 in
+  (* 5. Build JS commute data object *)
+  let js_buf = Buffer.create 8192 in
+  Buffer.add_string js_buf "var commuteData = {\n";
   List.iteri (fun i (r : Util.commute_record) ->
     let svgs = svgs_of_subdir r.subdir in
     let diag_html = match svgs with
-      | [] -> "<p class=\"nodiag\">No diagrams (graphviz not available or no satisfying model found).</p>"
-      | _  -> String.concat "\n" svgs
+      | [] -> "<p class=\\\"nodiag\\\">No diagrams (graphviz not available or no satisfying model found).</p>"
+      | _  -> String.concat "\\n" (List.map (fun s ->
+            (* escape backslashes then quotes for JS string *)
+            s |> Str.global_replace (Str.regexp_string "\\") "\\\\"
+              |> Str.global_replace (Str.regexp_string "\"") "\\\""
+              |> Str.global_replace (Str.regexp_string "\n") "\\n"
+          ) svgs)
     in
-    let examine_rel  = Printf.sprintf "commute_%04d/servois2_examine.html" i in
+    let examine_rel  = Printf.sprintf "commute_%04d/index.html" i in
     let examine_full = Filename.concat session_dir examine_rel in
     let examine_link =
       if Sys.file_exists examine_full then
-        Printf.sprintf "<a href=\"%s\">Open Servois2 query viewer &rarr;</a>" examine_rel
+        Printf.sprintf "<a href=\\\"%s\\\">Open Servois2 query viewer &rarr;</a>" examine_rel
       else
-        "<span style=\"color:#555\">Servois2 query viewer not available \
-         (run <code>perl examine.pl</code> in the commute subdirectory)</span>"
+        "<span style=\\\"color:#555\\\">Servois2 query viewer not available</span>"
     in
-    Buffer.add_string modal_buf
-      (Printf.sprintf {|<div class="modal" id="m%d">
-  <span class="closebtn" onclick="closeModal(%d)">&times;</span>
-  <h2>Commute Block %d</h2>
-  <div class="mloc">%s</div>
-  <div class="mcond">%s</div>
-  <div class="diagrams">%s</div>
-  <div class="mlinks">%s</div>
-</div>
-|} i i i (html_escape r.loc_str) (html_escape r.condition) diag_html examine_link)
+    let js_escape s =
+      s |> Str.global_replace (Str.regexp_string "\\") "\\\\"
+        |> Str.global_replace (Str.regexp_string "\"") "\\\""
+        |> Str.global_replace (Str.regexp_string "\n") "\\n"
+    in
+    Buffer.add_string js_buf
+      (Printf.sprintf "  %d:{loc:\"%s\",cond:\"%s\",diagrams:\"%s\",link:\"%s\"},\n"
+         i (js_escape r.loc_str) (js_escape r.condition) diag_html examine_link)
   ) records;
+  Buffer.add_string js_buf "};\n";
 
   (* 6. Assemble the full page *)
   let html = Printf.sprintf {|<!DOCTYPE html>
@@ -219,12 +225,16 @@ let generate ~source_file ~session_dir ~records =
   Source: <strong>%s</strong><br>
   Session: <code>%s</code>
 </div>
+<div class="layout">
+  <div class="src-panel">
+%s
+  </div>
+  <div class="diag-panel" id="diag-panel">
+    <div id="diag-content"></div>
+  </div>
+</div>
 %s
 %s
-<div class="backdrop" id="bd" onclick="
-  this.style.display='none';
-  document.querySelectorAll('.modal').forEach(function(m){m.style.display='none';});
-"></div>
 %s
 </body>
 </html>|}
@@ -233,8 +243,9 @@ let generate ~source_file ~session_dir ~records =
     (html_escape source_file)
     (html_escape session_dir)
     (Buffer.contents src_buf)
-    (Buffer.contents modal_buf)
-    js
+    js_prefix
+    (Buffer.contents js_buf)
+    js_suffix
   in
 
   let out_path = Filename.concat session_dir "index.html" in

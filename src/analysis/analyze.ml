@@ -242,4 +242,5 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
     (main, compl)
   in
   Servois2.Solve.mode := Servois2.Solve.Bowtie;
+  Servois2.Util.finalize_examine m1 m2 "verify";
   result

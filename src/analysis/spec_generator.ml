@@ -89,7 +89,13 @@ let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servoi
 let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
   let loc_vars, other_vars = List.partition (fun ((_, ty), _) -> ty = TLoc) em_vars in
   let loc_varnames   = List.map (fun ((id, _), _) -> id) loc_vars in
-  let other_varnames = List.concat_map (fun ((id,_),ety) -> List.map fst (compile_ety_to_sty id ety)) other_vars in
+  (* tloc[] arrays get element-wise bijection; all other non-scalar-TLoc vars get plain equality *)
+  let loc_arr_vars, plain_vars =
+    List.partition (fun ((_, ty), _) -> ty = TArr TLoc) other_vars in
+  let loc_arr_names =
+    List.concat_map (fun ((id,_),ety) -> List.map fst (compile_ety_to_sty id ety)) loc_arr_vars in
+  let other_varnames =
+    List.concat_map (fun ((id,_),ety) -> List.map fst (compile_ety_to_sty id ety)) plain_vars in
 
   (* The bijection is determined by the tloc program variables:
        null  -> null
@@ -120,12 +126,21 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
       EFunc ("select", [EVar (VarPost "heap_next"); EVar (VarPost n)]))
   ) loc_varnames in
 
+  (* For each tloc[] array: ∀ i. bij(arr[i]) = arr_new[i]
+     Smt.TInt is qualified because open Ast (last) shadows the unqualified TInt. *)
+  let loc_arr_eqs = List.map (fun n ->
+    EForall ([(Var "i__ext", Smt.TInt)],
+      EBop (Eq,
+        apply_bij (EFunc ("select", [EVar (Var n);     EVar (Var "i__ext")])),
+                   EFunc ("select", [EVar (VarPost n); EVar (Var "i__ext")])))
+  ) loc_arr_names in
+
   (* other program variables: plain equality *)
   let other_eqs = List.map (fun n ->
     EBop (Eq, EVar (Var n), EVar (VarPost n))
   ) other_varnames in
 
-  sexp_of_sexp_list ([alloc_eq] @ value_eqs @ next_eqs @ other_eqs)
+  sexp_of_sexp_list ([alloc_eq] @ value_eqs @ next_eqs @ loc_arr_eqs @ other_eqs)
 
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
@@ -164,7 +179,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         let ty = match typ with
                 | (TArr t) -> t
                 | THashTable (t1,t2) -> t2
-                | _ -> failwith "not implemented"
+                | _ -> failwith "Index of a non-Arr, non-HT is not implemented"
         in
 
         let t2, _ = get_exp_term e2 in
@@ -452,10 +467,12 @@ and loop_modified_in_stmt (stmt : stmt node) : string list =
       let rec base_id = function
         | {elt=Id n;_} -> n
         | {elt=Index(b,_);_} -> base_id b
-        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
         | _ -> failwith "loop_modified_vars: unsupported havoc lvalue"
       in
-      [base_id e]
+      (match e.elt with
+       | HDerefValue _ -> ["heap_value"]
+       | HDerefNext _  -> ["heap_next"]
+       | _             -> [base_id e])
   | If (_, b1, b2) ->
       loop_modified_vars b1.elt @ loop_modified_vars b2.elt
   | While (_, _, body) ->
@@ -609,39 +626,56 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
 
         | Havoc(e) ->
-          let rec base_id = function
-            | {elt=Id n;_} -> n
-            | {elt=Index(b,_);_} -> base_id b
-            | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
-            | _ -> failwith "havoc: unsupported lvalue expression"
-          in
-          let id = base_id e in
-          let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
-          let is_tloc =
-            match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
-            | Some ((_, TLoc), _) -> true
-            | _ -> false
-          in
-          if is_tloc then begin
-            (* tloc havoc: allocate a fresh heap location rather than picking any integer *)
-            let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
-            let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
-            ELet ([(new_id, heapallocv)],
-              ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt 1)])],
-                compile_block_to_smt tl vctrs))
-          end else begin
-            let havoc_id = id^"_havoc" in
-            let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
-            let havoc_sty =
-              match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
-              | Some ((_, ty), _) -> sty_of_ty ty
-              | None ->
-                  if List.mem id heap_model_vars
-                  then Smt.TArray (Smt.TInt, Smt.TInt)
-                  else Smt.TInt
+          let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+          (match e.elt with
+          | HDerefValue loc_exp ->
+            let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            let havoc_id = "heap_value_havoc_val" in
+            bind loc_binds @@
+              EExists ([(Var havoc_id, Smt.TInt)],
+                ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; EVar (Var havoc_id)])],
+                  compile_block_to_smt tl vctrs))
+          | HDerefNext loc_exp ->
+            let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
+            let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
+            let havoc_id = "heap_next_havoc_val" in
+            bind loc_binds @@
+              EExists ([(Var havoc_id, Smt.TInt)],
+                ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; EVar (Var havoc_id)])],
+                  compile_block_to_smt tl vctrs))
+          | _ ->
+            let rec base_id = function
+              | {elt=Id n;_} -> n
+              | {elt=Index(b,_);_} -> base_id b
+              | _ -> failwith "havoc: unsupported lvalue expression"
             in
-            EExists([(Var havoc_id, havoc_sty)], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
-          end
+            let id = base_id e in
+            let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
+            let is_tloc =
+              match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+              | Some ((_, TLoc), _) -> true
+              | _ -> false
+            in
+            if is_tloc then begin
+              (* tloc havoc: allocate a fresh heap location rather than picking any integer *)
+              let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
+              ELet ([(new_id, heapallocv)],
+                ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt 1)])],
+                  compile_block_to_smt tl vctrs))
+            end else begin
+              let havoc_id = id^"_havoc" in
+              let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
+              let havoc_sty =
+                match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+                | Some ((_, ty), _) -> sty_of_ty ty
+                | None ->
+                    if List.mem id heap_model_vars
+                    then Smt.TArray (Smt.TInt, Smt.TInt)
+                    else Smt.TInt
+              in
+              EExists([(Var havoc_id, havoc_sty)], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
+            end)
 
         | Require(e) ->
           let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
