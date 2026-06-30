@@ -76,7 +76,7 @@ tr.cm .code{color:#9cdcfe}
 .badge{display:inline-block;background:#0e639c;color:#fff;font-size:.72em;
        border-radius:3px;padding:0 5px;margin-left:10px;vertical-align:middle}
 /* side diagram panel */
-.diag-panel{display:none;flex:0 0 460px;position:sticky;top:20px;
+.diag-panel{display:none;flex:0 0 60%;position:sticky;top:20px;
             background:#252526;border:1px solid #3c3c3c;border-radius:8px;
             padding:20px;max-height:calc(100vh - 40px);overflow-y:auto}
 .diag-panel h2{margin-top:0;color:#569cd6;font-size:1.1em}
