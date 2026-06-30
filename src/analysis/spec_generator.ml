@@ -1175,5 +1175,13 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
       | _ -> go tl vctrs wrap
       end
   in
-  go b variable_ctr_list Fun.id;
+  (* Use a deep-copied local counter table so that assertion VCGen does not
+     pollute the global variable_ctr_list used by compile_blocks_to_spec.
+     Without this, variables like `tj` end up with non-zero counters in the
+     global table (from Havoc processing), causing them to resolve to
+     versioned names like `tj_1` in subsequent commute-block obligations
+     where they are undeclared. *)
+  let local_vctrs = Hashtbl.create (Hashtbl.length variable_ctr_list) in
+  Hashtbl.iter (fun k v -> Hashtbl.add local_vctrs k (ref !v)) variable_ctr_list;
+  go b local_vctrs Fun.id;
   !vcs
