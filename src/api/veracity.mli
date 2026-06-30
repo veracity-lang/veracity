@@ -49,3 +49,10 @@ val verify : ?opts:options -> input -> (unit * string option) api_result
     Returns [Ok ()] if all invariants hold, [Error (VerifyError _)] if any
     fail (the message names the location and the failing invariant). *)
 val check_invariants : ?opts:options -> input -> unit api_result
+
+(** Check every assert() statement in every method of the program using
+    VCGen-based strongest-postcondition reasoning.
+    Returns [Ok ((), html_path)] if all assertions are verified; [html_path]
+    is the HTML report path when [opts.html = true], [None] otherwise.
+    Returns [Error (VerifyError msg)] listing each failed or unknown assertion. *)
+val check_assertions : ?opts:options -> input -> (unit * string option) api_result

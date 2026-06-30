@@ -181,6 +181,59 @@ let verify ?(opts = default_options) input =
          Error (VerifyError (Printexc.to_string e)))
     end
 
+let check_assertions ?(opts = default_options) input =
+  match resolve input with
+  | Error e -> Error e
+  | Ok prog ->
+    configure opts;
+    let prover : (module Servois2.Provers.Prover) = match opts.prover with
+      | `CVC4 -> (module Servois2.Provers.ProverCVC4)
+      | `CVC5 -> (module Servois2.Provers.ProverCVC5)
+      | `Z3   -> (module Servois2.Provers.ProverZ3)
+    in
+    let html_session =
+      if opts.html then begin
+        let sdir = Html_output.create_session_dir () in
+        Util.session_dir     := Some sdir;
+        Util.commute_counter := 0;
+        Util.commute_records := [];
+        Some (sdir, input)
+      end else None
+    in
+    (try
+      let results = Analyze.collect_asserts_in_prog prog prover in
+      let failures = List.filter_map (fun (loc_str, res) ->
+        match res with
+        | Servois2.Provers.Unsat -> None
+        | Servois2.Provers.Sat _ ->
+            Some (Printf.sprintf "Assert at %s: FAILED (counterexample exists)" loc_str)
+        | Servois2.Provers.Unknown ->
+            Some (Printf.sprintf "Assert at %s: unknown" loc_str)
+      ) results in
+      let html_path = match html_session with
+        | None -> None
+        | Some (sdir, inp) ->
+          let source_file = match inp with
+            | File path -> path
+            | Source src ->
+              let p = Filename.concat sdir "source.vcy" in
+              let oc = open_out p in output_string oc src; close_out oc; p
+            | Prog p ->
+              let src = Ast_print.AstPP.string_of_prog p in
+              let path = Filename.concat sdir "source.vcy" in
+              let oc = open_out path in output_string oc src; close_out oc; path
+          in
+          Some (Html_output.generate
+            ~source_file
+            ~session_dir:sdir
+            ~records:!Util.commute_records)
+      in
+      (match failures with
+      | []   -> Ok ((), html_path)
+      | msgs -> Error (VerifyError (String.concat "\n" msgs)))
+    with e ->
+      Error (VerifyError (Printexc.to_string e)))
+
 let check_invariants ?(opts = default_options) input =
   match resolve input with
   | Error e -> Error e

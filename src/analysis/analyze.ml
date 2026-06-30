@@ -227,6 +227,20 @@ let check_asserts_in_prog (prog: Ast.prog)
   ) prog;
   !all_ok
 
+(* Silent variant used by the API: collects (location_string, result) pairs
+   without printing to stdout. *)
+let collect_asserts_in_prog (prog: Ast.prog)
+    (prover: (module Servois2.Provers.Prover))
+    : (string * Servois2.Provers.solve_result) list =
+  List.concat_map (function
+    | Ast.Gmdecl m ->
+      let meth = m.elt in
+      let params = List.map (fun (ty, id) -> (id, ty)) meth.args in
+      let results = check_asserts_of_block meth.body.elt params prover in
+      List.map (fun (loc, result) -> (Range.string_of_range loc, result)) results
+    | _ -> []
+  ) prog
+
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
