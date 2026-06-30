@@ -1063,6 +1063,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
             let ety = match ty with
               | TInt | TLoc -> ETInt id
               | TBool -> ETBool id
+              | TArr inner -> ETArr (id, sty_of_ty inner)
               | _ -> ETInt id
             in
             if not (List.exists (fun ((eid, _), _) -> String.equal eid id) !extra_vars) then
@@ -1106,9 +1107,14 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
                 EVar v -> v | _ -> failwith "havoc" in
               let havoc_id = id ^ "_havoc" in
               let exp_smt, _ = etse (no_loc @@ Id havoc_id) right vctrs in
-              let havoc_sty = match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
+              let havoc_sty =
+                match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
                 | Some ((_, ty), _) -> sty_of_ty ty
-                | None -> Smt.TInt in
+                | None ->
+                  match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !extra_vars with
+                  | Some ((_, ty), _) -> sty_of_ty ty
+                  | None -> Smt.TInt
+              in
               go tl vctrs (fun k ->
                 wrap (EExists ([(Var havoc_id, havoc_sty)], ELet ([new_id, exp_smt], k))))
             with _ -> go tl vctrs wrap end
