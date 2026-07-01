@@ -719,7 +719,8 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
         | Require(e) ->
           let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
-          pre := exp_smt;
+          let conds = consume_deref_conds () in
+          pre := with_conds conds exp_smt;
           compile_block_to_smt tl vctrs;
 
         (* Loop with a verified invariant: replace the loop with its invariant.
@@ -822,11 +823,26 @@ let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
 
 let generate_spec_pre_post_condition pre post =
   let vctrs = variable_ctr_list in
-  match pre, post with 
-  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
+  (* Compile an expression and consume any deref_conds it generates.
+     For the pre-condition, deref conditions (e.g. 0 ≤ Head < heap_alloc from
+     Head->next in the pre) are folded into the returned SMT so the solver
+     treats pointer validity as a hypothesis.  For the post-condition we
+     discard them — post-state validity is handled by states_equal. *)
+  let compile_pre e =
+    let smt = fst @@ exp_to_smt_exp e right vctrs in
+    let conds = !deref_conds in deref_conds := [];
+    List.fold_right (fun c acc -> ELop (And, [c; acc])) conds smt
+  in
+  let compile_post e =
+    let smt = fst @@ exp_to_smt_exp e right vctrs in
+    deref_conds := [];
+    smt
+  in
+  match pre, post with
+  | Some pre, Some post -> compile_pre pre, compile_post post
   | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
-  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
-  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
+  | None, Some post -> (Smt.EConst (CBool true)), compile_post post
+  | Some pre, None -> compile_pre pre, (Smt.EConst (CBool true))
 
 let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let args = List.map (fun (ty,id) -> (Smt.Var id, sty_of_ty ty)) m.args in
