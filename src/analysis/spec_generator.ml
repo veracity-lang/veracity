@@ -698,25 +698,11 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
               | _ -> false
             in
             if is_tloc then begin
-              (* tloc havoc: new value is null, any previously-allocated heap
-                 location, or a fresh allocation.  heap_alloc increments only
-                 when the fresh slot (= current heap_alloc) is chosen. *)
+              (* tloc havoc: allocate a fresh heap location rather than picking any integer *)
               let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
-              let havoc_id  = id ^ "_havoc" in
-              let havoc_smt = EVar (Var havoc_id) in
-              let null_case   = EBop (Eq, havoc_smt, smt_negone ()) in
-              let alloc_range = ELop (And, [ EBop (Gte, havoc_smt, EConst (CInt 0))
-                                           ; EBop (Lte, havoc_smt, heapallocv) ]) in
-              EExists ([(Var havoc_id, Smt.TInt)],
-                ELop (And, [
-                  ELop (Or, [null_case; alloc_range]);
-                  ELet ([(new_id, havoc_smt)],
-                    ELet ([to_var heapallocv',
-                           EITE (EBop (Eq, havoc_smt, heapallocv),
-                                 ELop (Add, [heapallocv; EConst (CInt 1)]),
-                                 heapallocv)],
-                      compile_block_to_smt tl vctrs))
-                ]))
+              ELet ([(new_id, heapallocv)],
+                ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt 1)])],
+                  compile_block_to_smt tl vctrs))
             end else begin
               let havoc_id = id^"_havoc" in
               let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in
