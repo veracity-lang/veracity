@@ -40,16 +40,22 @@ let dot_to_svg dot_path =
     (try Some (read_file svg_path) with _ -> None)
   else None
 
-(* Collect all SVGs from .dot files in a directory. *)
+(* Collect all SVGs from a directory: pre-built .svg files first,
+   then .dot files converted via graphviz. *)
 let svgs_of_subdir subdir =
   try
-    let entries = Sys.readdir subdir |> Array.to_list in
-    let dots = entries
-      |> List.filter (fun f -> Filename.extension f = ".dot")
-      |> List.sort String.compare
-      |> List.map (fun f -> Filename.concat subdir f)
+    let entries = Sys.readdir subdir |> Array.to_list |> List.sort String.compare in
+    let prebuilt = entries
+      |> List.filter (fun f -> Filename.extension f = ".svg")
+      |> List.filter_map (fun f ->
+           try Some (read_file (Filename.concat subdir f)) with _ -> None)
     in
-    List.filter_map dot_to_svg dots
+    let dot_svgs = entries
+      |> List.filter (fun f -> Filename.extension f = ".dot")
+      |> List.map (fun f -> Filename.concat subdir f)
+      |> List.filter_map dot_to_svg
+    in
+    prebuilt @ dot_svgs
   with _ -> []
 
 

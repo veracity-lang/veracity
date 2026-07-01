@@ -756,10 +756,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
             in
             (new_id, Smt.EVar (Smt.Var hv), hv, sty)
           ) modified in
-          (* Evaluate invariant and guard under the post-loop variable versions. *)
+          (* Evaluate invariant and guard under the post-loop variable versions.
+             Consuming deref_conds here prevents stale bounds-check conditions
+             (e.g. Head_1 >= 0) from leaking into the next method's compilation. *)
           let inv_smt,   _ = exp_to_smt_exp inv   right vctrs in
           let guard_smt, _ = exp_to_smt_exp guard right vctrs in
-          let exit_cond = ELop (And, [inv_smt; EUop (Not, guard_smt)]) in
+          let inv_deref_conds = consume_deref_conds () in
+          let exit_cond = with_conds inv_deref_conds @@ ELop (And, [inv_smt; EUop (Not, guard_smt)]) in
           let existentials = List.map (fun (_, _, hv, sty) -> (Smt.Var hv, sty)) havoc_triples in
           let lets         = List.map (fun (nid, e, _, _) -> (nid, e)) havoc_triples in
           EExists (existentials,
@@ -875,6 +878,9 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     method_spec
 
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
+  (* Discard any deref_conds left over from a previous obligation's
+     generate_spec_pre_post_condition call, which does not clean up after itself. *)
+  deref_conds := [];
   let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
 
@@ -905,8 +911,11 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
 
   let preamble = None in
 
+  let tloc_arr_names = List.filter_map (fun ((id, ty), _) ->
+      if ty = TArr TLoc then Some id else None) embedding_vars in
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = [];
+              tloc_arr_names } in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
