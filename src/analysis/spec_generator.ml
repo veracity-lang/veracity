@@ -374,7 +374,20 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         | And | Add | Or ->
             ELop (bop_to_servoisLop op, [rtn1; rtn2]),  binds1 @ binds2
         | Neq ->
-            EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2
+            (* 'x != null' means x is a valid allocated location: 0 < x < heap_alloc.
+               Plain inequality (neither side is a TLoc null) keeps the standard encoding. *)
+            let is_tloc_null e = match e.elt with CNull TLoc -> true | _ -> false in
+            (match is_tloc_null e1, is_tloc_null e2 with
+             | true, false ->
+                 let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+                 ELop (And, [EBop (Gt, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
+                 binds1 @ binds2
+             | false, true ->
+                 let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+                 ELop (And, [EBop (Gt, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
+                 binds1 @ binds2
+             | _ ->
+                 EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2)
         | Implies ->
             EBop (Imp, rtn1, rtn2), binds1 @ binds2
         | _ -> failwith @@ sp "undefined op: %s" @@ AstML.string_of_binop op
