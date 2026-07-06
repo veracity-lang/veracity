@@ -200,8 +200,12 @@ let check_asserts_of_block (block: Ast.block)
     with
     | result -> Some (loc, result)
     | exception e ->
-      Printf.eprintf "Warning: skipping assert at %s: %s\n"
-        (Range.string_of_range loc) (Printexc.to_string e);
+      let query_for_diag = assert_smt_query (embedding @ !extra_vars) vc in
+      let tmp = Filename.temp_file "conquoer_vc_fail_" ".smt2" in
+      (try let oc = open_out tmp in output_string oc query_for_diag; close_out oc
+       with _ -> ());
+      Printf.eprintf "Warning: skipping assert at %s: %s [query dumped to %s]\n"
+        (Range.string_of_range loc) (Printexc.to_string e) tmp;
       None
   ) vcs
 
@@ -228,15 +232,23 @@ let check_asserts_in_prog (prog: Ast.prog)
   !all_ok
 
 (* Silent variant used by the API: collects (location_string, result) pairs
-   without printing to stdout. *)
+   without printing to stdout.  Global variable declarations are included in
+   the embedding so that infer_gstates_type returns correct array types (e.g.
+   Location : tloc[][] = TArr(TArr TLoc)) rather than defaulting to TInt.
+   This is necessary for null-coercion in indexed assignments to work correctly
+   when the RHS is CNull TLoc but the slot element type is TArr TLoc. *)
 let collect_asserts_in_prog (prog: Ast.prog)
     (prover: (module Servois2.Provers.Prover))
     : (string * Servois2.Provers.solve_result) list =
+  let gvars = List.filter_map (function
+    | Ast.Gvdecl gv -> Some (gv.elt.Ast.name, gv.elt.Ast.ty)
+    | _ -> None) prog
+  in
   List.concat_map (function
     | Ast.Gmdecl m ->
       let meth = m.elt in
       let params = List.map (fun (ty, id) -> (id, ty)) meth.args in
-      let results = check_asserts_of_block meth.body.elt params prover in
+      let results = check_asserts_of_block meth.body.elt (gvars @ params) prover in
       List.map (fun (loc, result) -> (Range.string_of_range loc, result)) results
     | _ -> []
   ) prog

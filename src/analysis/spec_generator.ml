@@ -10,7 +10,12 @@ let right = 1 (* indicates the right of assignment *)
 
 let mIndex = ref 0
 let predicates_list = ref []
-let gstates = ref [] 
+let gstates = ref []
+(* Extra variable declarations accumulated during generate_assert_vcs.
+   Kept in sync with the extra_vars ref passed to generate_assert_vcs so that
+   infer_gstates_type can find types of local variables (e.g. q : TArr (TArr TLoc))
+   that appear in extra_vars but not in gstates. *)
+let vcgen_extra_vars : embedding_map ref = ref []
 
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
@@ -165,6 +170,11 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
   let terms = ref [] in
   let rec get_exp_term (e: exp node) : sexp * ty = 
       match e.elt with
+      | CNull (TArr TLoc) ->
+          (* null tloc[] — encode as SMT constant array of -1 (null TLoc) values so that
+             array-typed Location slots can be compared/assigned without a type mismatch. *)
+          let null_arr = EFunc ("(as const (Array Int Int))", [smt_negone ()]) in
+          terms := !terms @ [(null_arr, TArr TLoc)]; (null_arr, TArr TLoc)
       | CNull _ -> terms := !terms @ [(smt_negone(), TInt)]; (smt_negone(), TInt)
       | CBool b -> terms := !terms @ [(Smt.EConst (CBool b), TBool)]; (Smt.EConst (CBool b), TBool)
       | CInt i -> terms := !terms @ [(Smt.EConst (CInt (Int64.to_int i)), TInt)]; (Smt.EConst (CInt (Int64.to_int i)), TInt)
@@ -350,10 +360,46 @@ let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int
 (* Tracks variables bound by 'exists' so they bypass version-mangling in Id. *)
 let bound_vars : (string, unit) Hashtbl.t = Hashtbl.create 4
 
+(* Infer the VCY type of an expression by looking up global state types.
+   Only inspects Id and Index nodes — sufficient for detecting array-typed
+   sub-expressions that need null-array encoding instead of -1. *)
+let rec infer_gstates_type (e: exp node) : ty =
+  match e.elt with
+  | Id id ->
+      (match List.find_opt (fun ((v, _), _) -> String.equal v id) !gstates with
+       | Some ((_, ty), _) -> ty
+       | None ->
+           (* Also check extra vars accumulated during assertion VCGen (e.g.
+              local array variables like q : TArr (TArr TLoc) that are declared
+              via Decl-failure in generate_assert_vcs and not in gstates). *)
+           (match List.find_opt (fun ((v, _), _) -> String.equal v id) !vcgen_extra_vars with
+            | Some ((_, ty), _) -> ty
+            | None -> TInt))
+  | Index (arr, _) ->
+      (match infer_gstates_type arr with TArr t -> t | _ -> TInt)
+  | _ -> TInt
+
+(* Return the appropriate SMT null for the element type of array expression [arr_e].
+   If arr_e has type TArr (TArr TLoc), its element type is TArr TLoc, which needs
+   a constant-array null ((as const (Array Int Int)) -1) rather than -1. *)
+let null_arr_elem_smt (arr_e: exp node) : sexp =
+  match infer_gstates_type arr_e with
+  | TArr (TArr TLoc) -> EFunc ("(as const (Array Int Int))", [smt_negone ()])
+  | _ -> smt_negone ()
+
+(* Return the SMT null for an expression of type [ty]:
+   TArr TLoc → null array; anything else → scalar -1. *)
+let null_smt_for_type (ty: ty) : sexp =
+  match ty with
+  | TArr TLoc -> EFunc ("(as const (Array Int Int))", [smt_negone ()])
+  | _ -> smt_negone ()
+
 let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist =
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
+    | CNull (TArr TLoc) ->
+        EFunc ("(as const (Array Int Int))", [smt_negone ()]), []
     | CNull _ -> smt_negone(), []
     | CStr str -> Smt.EConst (CString str), []
     | Id id ->
@@ -369,23 +415,48 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
 
         begin match op with
-        | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte ->
+        | Sub | Mul | Mod | Div | Lt | Gt | Lte | Gte ->
             EBop (bop_to_servoisBop op, rtn1, rtn2),  binds1 @ binds2
+        | Eq ->
+            (* When one side is a scalar null (-1) but the other is an array-typed
+               expression (e.g. Location[him[t]] == NULL where Location : tloc[][]),
+               coerce the null to a null array to avoid an SMT type mismatch. *)
+            let is_scalar_null e = match e.elt with CNull TLoc -> true | _ -> false in
+            let coerce_null e rtn other_e =
+              if is_scalar_null e then
+                let other_ty = infer_gstates_type other_e in
+                null_smt_for_type other_ty
+              else rtn
+            in
+            let rtn1' = coerce_null e1 rtn1 e2 in
+            let rtn2' = coerce_null e2 rtn2 e1 in
+            EBop (bop_to_servoisBop Eq, rtn1', rtn2'), binds1 @ binds2
         | And | Add | Or ->
             ELop (bop_to_servoisLop op, [rtn1; rtn2]),  binds1 @ binds2
         | Neq ->
             (* 'x != null' means x is a valid allocated location: 0 < x < heap_alloc.
-               Plain inequality (neither side is a TLoc null) keeps the standard encoding. *)
+               For array-typed x (e.g. q[tj] where q : tloc[][]), use plain inequality
+               with a null array instead — the heap_alloc range encoding only applies to
+               scalar TLoc values. *)
             let is_tloc_null e = match e.elt with CNull TLoc -> true | _ -> false in
+            let is_arr_typed e = match infer_gstates_type e with TArr _ -> true | _ -> false in
             (match is_tloc_null e1, is_tloc_null e2 with
              | true, false ->
-                 let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
-                 ELop (And, [EBop (Gt, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
-                 binds1 @ binds2
+                 if is_arr_typed e2 then
+                   let null_arr = null_smt_for_type (infer_gstates_type e2) in
+                   EUop (Not, EBop (bop_to_servoisBop Eq, rtn2, null_arr)), binds1 @ binds2
+                 else
+                   let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+                   ELop (And, [EBop (Gt, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
+                   binds1 @ binds2
              | false, true ->
-                 let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
-                 ELop (And, [EBop (Gt, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
-                 binds1 @ binds2
+                 if is_arr_typed e1 then
+                   let null_arr = null_smt_for_type (infer_gstates_type e1) in
+                   EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, null_arr)), binds1 @ binds2
+                 else
+                   let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
+                   ELop (And, [EBop (Gt, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
+                   binds1 @ binds2
              | _ ->
                  EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2)
         | Implies ->
@@ -528,7 +599,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | Assn ({elt = Index (name_exp,index_exp); loc = _},exp) ->
           let name_exp_smt, _ = exp_to_smt_exp name_exp right vctrs  in
           let index_exp_smt, _ = exp_to_smt_exp index_exp right vctrs  in
-          let exp_smt, _ = exp_to_smt_exp exp right vctrs  in
+          let raw_exp_smt, _ = exp_to_smt_exp exp right vctrs  in
+          (* When assigning null into a TArr (TArr TLoc) slot, coerce the scalar -1
+             to a null array so the SMT store type matches the array element type. *)
+          let exp_smt = match exp.elt with
+            | CNull TLoc -> null_arr_elem_smt name_exp
+            | _ -> raw_exp_smt
+          in
           let conds = consume_deref_conds () in
           let path_name_exp_smt, _ = match exp_to_smt_exp name_exp left vctrs with
                                   | Smt.EVar v, b -> v ,b
@@ -989,12 +1066,23 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
   let bind = function [] -> Fun.id | exp -> fun e -> ELet(exp, e) in
   let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
   let vcs = ref [] in
+  (* Keep vcgen_extra_vars in sync with extra_vars so that infer_gstates_type
+     can find types of local variables accumulated during VCGen (e.g. q : TArr
+     (TArr TLoc) added via the Decl-failure path). *)
+  vcgen_extra_vars := !extra_vars;
   (* Wrapper around exp_to_smt_exp that discards any deref_conds side-effects.
      The allocation-validity conditions are not needed for assertion VCGen. *)
   let etse e s ?(indexed=true) v =
     let r = exp_to_smt_exp e s ~indexed v in
     deref_conds := [];
     r
+  in
+  (* Helper to update extra_vars and keep vcgen_extra_vars in sync. *)
+  let add_extra_var entry =
+    if not (List.exists (fun ((eid, _), _) -> String.equal eid (fst (fst entry))) !extra_vars) then begin
+      extra_vars := !extra_vars @ [entry];
+      vcgen_extra_vars := !extra_vars
+    end
   in
   (* If the block uses heap operations, initialise heap model variables in the
      version counter table (counter starts at 1, matching compile_block_to_smt)
@@ -1011,7 +1099,8 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
       (("heap_alloc_1", TInt),      ETInt  "heap_alloc_1");
       (("heap_value_1", TArr TInt), ETArr ("heap_value_1", Smt.TInt));
       (("heap_next_1",  TArr TInt), ETArr ("heap_next_1",  Smt.TInt));
-    ]
+    ];
+    vcgen_extra_vars := !extra_vars
   end;
   let rec go (stmts: block) (vctrs: (string, int ref) Hashtbl.t) (wrap: sexp -> sexp) =
     match stmts with
@@ -1074,7 +1163,14 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
           begin try
             let name_smt, _ = etse name_exp right vctrs in
             let idx_smt,  _ = etse index_exp right vctrs in
-            let e_smt, e_binds = etse exp right vctrs in
+            let raw_e_smt, e_binds = etse exp right vctrs in
+            (* When assigning CNull TLoc into a TArr(TArr TLoc) slot (e.g.
+               Location[mytid] = NULL where Location : tloc[][]), coerce the
+               scalar null to a null array to avoid an SMT store type mismatch. *)
+            let e_smt = match exp.elt with
+              | CNull TLoc -> null_arr_elem_smt name_exp
+              | _ -> raw_e_smt
+            in
             let arr_new = match etse name_exp left vctrs with
               EVar v, _ -> v | _ -> failwith "lhs array" in
             let store = EFunc ("store", [name_smt; idx_smt; e_smt]) in
@@ -1104,8 +1200,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               | TArr inner -> ETArr (id, sty_of_ty inner)
               | _ -> ETInt id
             in
-            if not (List.exists (fun ((eid, _), _) -> String.equal eid id) !extra_vars) then
-              extra_vars := !extra_vars @ [((id, ty), ety)];
+            add_extra_var ((id, ty), ety);
             Hashtbl.replace vctrs id (ref 0);
             go tl vctrs wrap
           end
