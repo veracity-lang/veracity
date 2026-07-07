@@ -45,8 +45,12 @@ let dot_to_svg dot_path =
 let svgs_of_subdir subdir =
   try
     let entries = Sys.readdir subdir |> Array.to_list |> List.sort String.compare in
+    (* Pre-built SVGs and HTML fragments (e.g. the variable table) are
+       included in sorted order — "heap_diagram.svg" before "heap_table.html". *)
     let prebuilt = entries
-      |> List.filter (fun f -> Filename.extension f = ".svg")
+      |> List.filter (fun f ->
+           let ext = Filename.extension f in
+           (ext = ".svg" || ext = ".html") && f <> "index.html")
       |> List.filter_map (fun f ->
            try Some (read_file (Filename.concat subdir f)) with _ -> None)
     in

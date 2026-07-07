@@ -434,7 +434,8 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         | And | Add | Or ->
             ELop (bop_to_servoisLop op, [rtn1; rtn2]),  binds1 @ binds2
         | Neq ->
-            (* 'x != null' means x is a valid allocated location: 0 < x < heap_alloc.
+            (* 'x != null' means x is a valid allocated location: 0 <= x < heap_alloc.
+               Null is encoded as -1, so valid TLoc values start at 0.
                For array-typed x (e.g. q[tj] where q : tloc[][]), use plain inequality
                with a null array instead — the heap_alloc range encoding only applies to
                scalar TLoc values. *)
@@ -447,7 +448,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
                    EUop (Not, EBop (bop_to_servoisBop Eq, rtn2, null_arr)), binds1 @ binds2
                  else
                    let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
-                   ELop (And, [EBop (Gt, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
+                   ELop (And, [EBop (Gte, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
                    binds1 @ binds2
              | false, true ->
                  if is_arr_typed e1 then
@@ -455,7 +456,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
                    EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, null_arr)), binds1 @ binds2
                  else
                    let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
-                   ELop (And, [EBop (Gt, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
+                   ELop (And, [EBop (Gte, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
                    binds1 @ binds2
              | _ ->
                  EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2)
@@ -774,6 +775,33 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
               EExists ([(Var havoc_id, Smt.TInt)],
                 ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; EVar (Var havoc_id)])],
                   compile_block_to_smt tl vctrs))
+          | Index (_, idx_exp) ->
+            (* havoc arr[i]: existentially quantify a fresh element and store it,
+               leaving all other array elements unchanged.
+               Use right/left sides of exp_to_smt_exp (like the Assn Index case)
+               so the current SSA name is used for the old value — not tail_0 which
+               may not be declared. *)
+            let rec base_id = function
+              | {elt=Id n;_} -> n
+              | {elt=Index(b,_);_} -> base_id b
+              | _ -> failwith "havoc index: unsupported lvalue expression"
+            in
+            let id = base_id e in
+            let id_exp = no_loc (Id id) in
+            let arr_smt, _   = exp_to_smt_exp id_exp right vctrs in
+            let idx_smt, _   = exp_to_smt_exp idx_exp right vctrs in
+            let arr_new, _   = match exp_to_smt_exp id_exp left vctrs with
+                               | Smt.EVar v, b -> v, b
+                               | _ -> failwith "havoc index: lhs" in
+            let havoc_id = id ^ "_elem_havoc" in
+            let elem_sty =
+              match infer_gstates_type e with
+              | TArr t -> sty_of_ty t
+              | _ -> Smt.TInt
+            in
+            EExists ([(Var havoc_id, elem_sty)],
+              ELet ([arr_new, EFunc ("store", [arr_smt; idx_smt; EVar (Var havoc_id)])],
+                compile_block_to_smt tl vctrs))
           | _ ->
             let rec base_id = function
               | {elt=Id n;_} -> n
@@ -1229,6 +1257,33 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
                   EExists ([(Var hvid, Smt.TInt)],
                     ELet ([to_var heapnextv',
                            EFunc ("store", [heapnextv; loc_smt; EVar (Var hvid)])], k))))
+            with _ -> go tl vctrs wrap end
+          | Index (_, idx_exp) ->
+            begin try
+              (* havoc arr[i]: existentially quantify a fresh element and store it,
+                 leaving all other array elements unchanged.
+                 Use right/left sides of etse (like the Assn Index case) so the
+                 current SSA name is used for the old value — not arr_0 which may
+                 not be declared. *)
+              let rec base_id = function
+                | {elt=Id n;_} -> n | {elt=Index(b,_);_} -> base_id b
+                | _ -> failwith "unsupported havoc lvalue" in
+              let id = base_id e in
+              let id_exp = no_loc (Id id) in
+              let arr_smt, _       = etse id_exp right vctrs in
+              let idx_smt, idx_binds = etse idx_exp right vctrs in
+              let arr_new = match etse id_exp left vctrs with
+                EVar v, _ -> v | _ -> failwith "havoc index: lhs" in
+              let havoc_id = id ^ "_elem_havoc" in
+              let elem_sty =
+                match infer_gstates_type e with
+                | TArr t -> sty_of_ty t
+                | _ -> Smt.TInt
+              in
+              go tl vctrs (fun k ->
+                wrap (bind idx_binds @@
+                  EExists ([(Var havoc_id, elem_sty)],
+                    ELet ([(arr_new, EFunc ("store", [arr_smt; idx_smt; EVar (Var havoc_id)]))], k))))
             with _ -> go tl vctrs wrap end
           | _ ->
             begin try
