@@ -292,6 +292,8 @@ module AstPP = struct
             | CommuteVarPar -> pps "par"
             | CommuteVarLM  -> pps "left"
             | CommuteVarRM  -> pps "right"
+            | CommuteVarRMCtx _ -> pps "right_ctx"
+            | CommuteVarLMCtx _ -> pps "left_ctx"
           end;
           begin match phi with
             | PhiExp(e) -> pps " ("; print_exp_aux 0 fmt e; pps ") "
@@ -308,6 +310,10 @@ module AstPP = struct
                   (match post with
                    | Some e -> ppnl (); pps "post: "; print_exp_aux 0 fmt e
                    | None -> ());
+                  (match variant with
+                   | CommuteVarRMCtx ctx | CommuteVarLMCtx ctx ->
+                       ppnl (); pps "context: "; print_exp_aux 0 fmt ctx
+                   | _ -> ());
                   pp_close_box fmt ();
                   ppnl (); pps "}"
             end
@@ -567,6 +573,8 @@ module AstML = struct
         | CommuteVarPar -> "CommuteVarPar"
         | CommuteVarLM -> "CommuteVarLM"
         | CommuteVarRM -> "CommuteVarRM"
+        | CommuteVarRMCtx ctx -> sp "CommuteVarRMCtx (%s)" (string_of_exp ctx)
+        | CommuteVarLMCtx ctx -> sp "CommuteVarLMCtx (%s)" (string_of_exp ctx)
         end
         begin match phi with 
         | PhiInf   -> "PhiInf" 

@@ -24,7 +24,10 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token COMMUTE_SEQ /* commute_seq */
 %token COMMUTE_PAR /* commute_par */
 %token COMMUTE_LEFT /* commute_left */
+%token COMMUTE_LEFT_CTX /* commute_left_ctx */
 %token COMMUTE_RIGHT /* commute_right */
+%token COMMUTE_RIGHT_CTX /* commute_right_ctx */
+%token CONTEXT /* context */
 %token HASHTABLE /* hashtable */
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
@@ -299,6 +302,12 @@ stmt:
   | variant=commute_variant phi=commute_condition
     LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) RBRACE
     { loc $startpos $endpos @@ Commute(variant,phi,blocks,pre,post) }
+  | COMMUTE_RIGHT_CTX phi=commute_condition
+    LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) CONTEXT COLON ctx=exp RBRACE
+    { loc $startpos $endpos @@ Commute(CommuteVarRMCtx ctx,phi,blocks,pre,post) }
+  | COMMUTE_LEFT_CTX phi=commute_condition
+    LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) CONTEXT COLON ctx=exp RBRACE
+    { loc $startpos $endpos @@ Commute(CommuteVarLMCtx ctx,phi,blocks,pre,post) }
   | RAISE e=exp SEMI { loc $startpos $endpos @@ Raise e }
   | ASSERT e=exp SEMI { loc $startpos $endpos @@ Assert e }
   | ASSUME e=exp SEMI { loc $startpos $endpos @@ Assume e }

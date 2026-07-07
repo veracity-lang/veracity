@@ -47,7 +47,10 @@
   ("commute", COMMUTE_PAR);
   (* moverness - sequential only because it's just for verification. *)
   ("commute_right", COMMUTE_RIGHT);
+  ("commute_right_ctx", COMMUTE_RIGHT_CTX);
   ("commute_left", COMMUTE_LEFT);
+  ("commute_left_ctx", COMMUTE_LEFT_CTX);
+  ("context", CONTEXT);
   ("rightmover", COMMUTE_RIGHT);
   ("leftmover", COMMUTE_LEFT);
   ("pre", PRE);

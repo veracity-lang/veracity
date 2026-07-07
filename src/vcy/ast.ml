@@ -132,6 +132,8 @@ and commute_variant =
 | CommuteVarPar
 | CommuteVarLM
 | CommuteVarRM
+| CommuteVarRMCtx of exp node
+| CommuteVarLMCtx of exp node
 
 
 and block = stmt node list

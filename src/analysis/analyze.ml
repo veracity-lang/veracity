@@ -253,18 +253,41 @@ let collect_asserts_in_prog (prog: Ast.prog)
     | _ -> []
   ) prog
 
+let rec subst_sfx sfx names (smt : Servois2.Smt.exp) : Servois2.Smt.exp =
+  let go e = subst_sfx sfx names e in
+  match smt with
+  | Servois2.Smt.EVar (Servois2.Smt.Var n) when List.mem n names ->
+      Servois2.Smt.EVar (Servois2.Smt.Var (n ^ sfx))
+  | Servois2.Smt.EVar _ -> smt
+  | Servois2.Smt.EBop (op, e1, e2) -> Servois2.Smt.EBop (op, go e1, go e2)
+  | Servois2.Smt.ELop (op, es) -> Servois2.Smt.ELop (op, List.map go es)
+  | Servois2.Smt.EUop (op, e) -> Servois2.Smt.EUop (op, go e)
+  | Servois2.Smt.EConst _ -> smt
+  | Servois2.Smt.EFunc (f, es) -> Servois2.Smt.EFunc (f, List.map go es)
+  | Servois2.Smt.EITE (c, t, f) -> Servois2.Smt.EITE (go c, go t, go f)
+  | Servois2.Smt.ELet (bs, e) ->
+      Servois2.Smt.ELet (List.map (fun (v, e) -> (v, go e)) bs, go e)
+  | Servois2.Smt.EArg _ -> smt
+
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
   begin match cv with
-  | CommuteVarLM -> Servois2.Solve.mode := Servois2.Solve.LeftMover
-  | CommuteVarRM -> Servois2.Solve.mode := Servois2.Solve.RightMover
+  | CommuteVarLM | CommuteVarLMCtx _ -> Servois2.Solve.mode := Servois2.Solve.LeftMover
+  | CommuteVarRM | CommuteVarRMCtx _ -> Servois2.Solve.mode := Servois2.Solve.RightMover
   | _ -> () end;
+  let ctx_12_opt = match cv with
+    | CommuteVarRMCtx ctx_exp | CommuteVarLMCtx ctx_exp ->
+        let ctx_init = fst @@ Spec_generator.exp_to_smt_exp ctx_exp Spec_generator.right Spec_generator.variable_ctr_list in
+        let state_names = List.map (fun (v, _) -> Servois2.Smt.string_of_var v) spec.state in
+        Some (subst_sfx "12" state_names ctx_init)
+    | _ -> None
+  in
   let result =
-    let main = Servois2.Verify.verify ~options:!Util.servois2_verify_option spec m1 m2 cond in
+    let main = Servois2.Verify.verify ~options:!Util.servois2_verify_option ~ctx_post_12:ctx_12_opt spec m1 m2 cond in
     let compl = match cv with
-      | CommuteVarLM | CommuteVarRM -> None
+      | CommuteVarLM | CommuteVarRM | CommuteVarLMCtx _ | CommuteVarRMCtx _ -> None
       | _ -> Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
     in
     (main, compl)
