@@ -438,26 +438,35 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
                Null is encoded as -1, so valid TLoc values start at 0.
                For array-typed x (e.g. q[tj] where q : tloc[][]), use plain inequality
                with a null array instead — the heap_alloc range encoding only applies to
-               scalar TLoc values. *)
+               scalar TLoc values.
+               For non-TLoc scalar x (e.g. an int variable), fall back to plain != -1 —
+               the heap_alloc range only makes sense for heap-allocated TLoc values. *)
             let is_tloc_null e = match e.elt with CNull TLoc -> true | _ -> false in
             let is_arr_typed e = match infer_gstates_type e with TArr _ -> true | _ -> false in
+            let is_tloc_typed e = match infer_gstates_type e with TLoc -> true | _ -> false in
             (match is_tloc_null e1, is_tloc_null e2 with
              | true, false ->
                  if is_arr_typed e2 then
                    let null_arr = null_smt_for_type (infer_gstates_type e2) in
                    EUop (Not, EBop (bop_to_servoisBop Eq, rtn2, null_arr)), binds1 @ binds2
-                 else
+                 else if is_tloc_typed e2 then
                    let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
                    ELop (And, [EBop (Gte, rtn2, EConst (CInt 0)); EBop (Lt, rtn2, ha)]),
                    binds1 @ binds2
+                 else
+                   (* Non-TLoc scalar: use plain != -1 (no heap_alloc range needed). *)
+                   EUop (Not, EBop (bop_to_servoisBop Eq, rtn2, smt_negone ())), binds1 @ binds2
              | false, true ->
                  if is_arr_typed e1 then
                    let null_arr = null_smt_for_type (infer_gstates_type e1) in
                    EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, null_arr)), binds1 @ binds2
-                 else
+                 else if is_tloc_typed e1 then
                    let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
                    ELop (And, [EBop (Gte, rtn1, EConst (CInt 0)); EBop (Lt, rtn1, ha)]),
                    binds1 @ binds2
+                 else
+                   (* Non-TLoc scalar: use plain != -1 (no heap_alloc range needed). *)
+                   EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, smt_negone ())), binds1 @ binds2
              | _ ->
                  EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2)
         | Implies ->

@@ -214,11 +214,15 @@ let check_asserts_of_block (block: Ast.block)
 let check_asserts_in_prog (prog: Ast.prog)
     (prover: (module Servois2.Provers.Prover)) : bool =
   let all_ok = ref true in
+  let gvars = List.filter_map (function
+    | Ast.Gvdecl gv -> Some (gv.elt.Ast.name, gv.elt.Ast.ty)
+    | _ -> None) prog
+  in
   List.iter (function
     | Ast.Gmdecl m ->
       let meth = m.elt in
       let params = List.map (fun (ty, id) -> (id, ty)) meth.args in
-      let results = check_asserts_of_block meth.body.elt params prover in
+      let results = check_asserts_of_block meth.body.elt (gvars @ params) prover in
       List.iter (fun (loc, result) ->
         let status = match result with
           | Servois2.Provers.Unsat   -> "verified"
@@ -267,6 +271,8 @@ let rec subst_sfx sfx names (smt : Servois2.Smt.exp) : Servois2.Smt.exp =
   | Servois2.Smt.EITE (c, t, f) -> Servois2.Smt.EITE (go c, go t, go f)
   | Servois2.Smt.ELet (bs, e) ->
       Servois2.Smt.ELet (List.map (fun (v, e) -> (v, go e)) bs, go e)
+  | Servois2.Smt.EForall (binds, e) -> Servois2.Smt.EForall (binds, go e)
+  | Servois2.Smt.EExists (binds, e) -> Servois2.Smt.EExists (binds, go e)
   | Servois2.Smt.EArg _ -> smt
 
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
