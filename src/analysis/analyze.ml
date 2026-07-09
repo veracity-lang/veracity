@@ -166,14 +166,37 @@ let prog_has_havoc (prog : prog) =
 
 (* Build a self-contained SMT-LIB2 query whose satisfiability determines
    whether vc (a boolean sexp) can be falsified.  UNSAT → assertion proved. *)
+(* The heap model variables that Spec_generator.generate_spec_state adds to the
+   commute-spec state.  The VCGen assert queries also reference them — a TLoc
+   'x != null' compiles to '0 <= x < heap_alloc' — so they must be declared here
+   too, otherwise CVC5/Z3 reject the query with "Symbol heap_alloc is not
+   declared" and the assert is skipped.  They are unconstrained (harmless) when
+   the program does not use the heap. *)
+let heap_model_decls : string list =
+  let arr = Servois2.Smt.string_of_ty (Servois2.Smt.TArray (Servois2.Smt.TInt, Servois2.Smt.TInt)) in
+  let int = Servois2.Smt.string_of_ty Servois2.Smt.TInt in
+  [ sp "(declare-fun heap_value () %s)" arr
+  ; sp "(declare-fun heap_next () %s)"  arr
+  ; sp "(declare-fun heap_alloc () %s)" int ]
+
 let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
   let stypes = Spec_generator.get_stypes embedding_vars in
   let decls = List.map (fun (id, sty) ->
     sp "(declare-fun %s () %s)" id (Servois2.Smt.string_of_ty sty)
   ) stypes in
+  (* Avoid double-declaring a heap-model var if the embedding already has one. *)
+  let declared_ids = List.map (fun (id, _) -> id) stypes in
+  let heap_decls =
+    List.filteri
+      (fun i _ ->
+         let name = List.nth ["heap_value"; "heap_next"; "heap_alloc"] i in
+         not (List.mem name declared_ids))
+      heap_model_decls
+  in
   String.concat "\n" @@
     ["(set-logic ALL)"]
     @ decls
+    @ heap_decls
     @ [ sp "(assert (not %s))" (Servois2.Smt.string_of_smt vc)
       ; "(check-sat)" ]
 
