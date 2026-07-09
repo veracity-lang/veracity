@@ -12,6 +12,7 @@ type options = {
   use_ae  : bool;
   html    : bool;
   silent  : bool;
+  cvc5_extra_args : string list;
 }
 
 let default_options = {
@@ -20,6 +21,7 @@ let default_options = {
   use_ae  = false;
   html    = false;
   silent  = true;
+  cvc5_extra_args = [];
 }
 
 type error =
@@ -58,6 +60,9 @@ let configure opts =
       prover = prover;
       use_ae = opts.use_ae;
   };
+  (* Extra CVC5 flags flow through to the solver invocation (Provers.run_prover);
+     only applied for the CVC5 prover. *)
+  Servois2.Provers.cvc5_extra_args := opts.cvc5_extra_args;
   Interp.silent := opts.silent
 
 let parse input = resolve input

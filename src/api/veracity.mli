@@ -13,6 +13,9 @@ type options = {
   use_ae  : bool;
   html    : bool;    (** Generate a self-contained HTML report; [infer] returns its path. *)
   silent  : bool;    (** Suppress all stdout output from the interpreter (default [true] via API). *)
+  cvc5_extra_args : string list;
+  (** Extra CVC5 command-line flags, appended to the CVC5 invocation only (e.g.
+      [["--full-saturate-quant"]]). Default [[]]. Ignored for other provers. *)
 }
 
 val default_options : options
