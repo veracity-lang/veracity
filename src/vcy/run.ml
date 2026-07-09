@@ -152,6 +152,7 @@ module RunInterp : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
       | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
@@ -467,6 +468,7 @@ module RunInfer : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
       | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
@@ -590,6 +592,7 @@ module RunVerify : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
       | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
@@ -678,6 +681,7 @@ module RunAssertions : Runner = struct
     | "cvc4"    -> (module Servois2.Provers.ProverCVC4)
     | "cvc5"    -> (module Servois2.Provers.ProverCVC5)
     | "z3"      -> (module Servois2.Provers.ProverZ3)
+    | "yices"      -> (module Servois2.Provers.ProverYices)
     | ""        -> (module Servois2.Provers.ProverCVC5)
     | s         -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
 
@@ -709,11 +713,12 @@ module RunInvariants : Runner = struct
     ; "--silent", Arg.Set silent_flag, " Suppress interpreter stdout"
     ] |> Arg.align
 
-  let get_prover () : [ `CVC4 | `CVC5 | `Z3 ] =
+  let get_prover () : [ `CVC4 | `CVC5 | `Z3 | `Yices ] =
     match !prover_name |> String.lowercase_ascii with
     | "cvc4" -> `CVC4
     | "cvc5" -> `CVC5
     | "z3"   -> `Z3
+    | "yices"   -> `Yices
     | ""     -> `CVC5
     | s      -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
 

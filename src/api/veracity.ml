@@ -7,7 +7,7 @@ type input =
   | Prog   of Ast.prog
 
 type options = {
-  prover  : [ `CVC4 | `CVC5 | `Z3 ];
+  prover  : [ `CVC4 | `CVC5 | `Z3 | `Yices ];
   timeout : float option;
   use_ae  : bool;
   html    : bool;
@@ -45,6 +45,7 @@ let configure opts =
     | `CVC4 -> (module Servois2.Provers.ProverCVC4)
     | `CVC5 -> (module Servois2.Provers.ProverCVC5)
     | `Z3   -> (module Servois2.Provers.ProverZ3)
+    | `Yices -> (module Servois2.Provers.ProverYices)
   in
   Util.servois2_synth_option := {
     Servois2.Synth.default_synth_options with
@@ -190,6 +191,7 @@ let check_assertions ?(opts = default_options) input =
       | `CVC4 -> (module Servois2.Provers.ProverCVC4)
       | `CVC5 -> (module Servois2.Provers.ProverCVC5)
       | `Z3   -> (module Servois2.Provers.ProverZ3)
+    | `Yices -> (module Servois2.Provers.ProverYices)
     in
     let html_session =
       if opts.html then begin
@@ -243,6 +245,7 @@ let check_invariants ?(opts = default_options) input =
       | `CVC4 -> (module Servois2.Provers.ProverCVC4)
       | `CVC5 -> (module Servois2.Provers.ProverCVC5)
       | `Z3   -> (module Servois2.Provers.ProverZ3)
+    | `Yices -> (module Servois2.Provers.ProverYices)
     in
     (try
       let env = Interp.initialize_env prog false in

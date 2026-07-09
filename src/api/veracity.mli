@@ -8,7 +8,7 @@ type input =
 
 (** Options for inference and verification calls. *)
 type options = {
-  prover  : [ `CVC4 | `CVC5 | `Z3 ];
+  prover  : [ `CVC4 | `CVC5 | `Z3 | `Yices ];
   timeout : float option;
   use_ae  : bool;
   html    : bool;    (** Generate a self-contained HTML report; [infer] returns its path. *)
