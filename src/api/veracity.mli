@@ -16,6 +16,10 @@ type options = {
   cvc5_extra_args : string list;
   (** Extra CVC5 command-line flags, appended to the CVC5 invocation only (e.g.
       [["--full-saturate-quant"]]). Default [[]]. Ignored for other provers. *)
+  out_dir : string option;
+  (** Directory this run should write into, so its output nests inside the
+      calling tool's own output tree. When [None], Veracity roots its own tree
+      at [$VERACITY_OUT] or [./veracity_output/run_NNNN/]. *)
 }
 
 val default_options : options

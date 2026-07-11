@@ -13,6 +13,7 @@ type options = {
   html    : bool;
   silent  : bool;
   cvc5_extra_args : string list;
+  out_dir : string option;
 }
 
 let default_options = {
@@ -22,6 +23,7 @@ let default_options = {
   html    = false;
   silent  = true;
   cvc5_extra_args = [];
+  out_dir = None;
 }
 
 type error =
@@ -63,7 +65,11 @@ let configure opts =
   (* Extra CVC5 flags flow through to the solver invocation (Provers.run_prover);
      only applied for the CVC5 prover. *)
   Servois2.Provers.cvc5_extra_args := opts.cvc5_extra_args;
-  Interp.silent := opts.silent
+  Interp.silent := opts.silent;
+  (* A caller-supplied dir makes this run nest inside the caller's tree; each
+     call resets it, so a caller driving many runs gets one dir per run. *)
+  Util.output_root := opts.out_dir;
+  Util.commute_counter := 0
 
 let parse input = resolve input
 

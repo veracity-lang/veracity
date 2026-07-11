@@ -133,13 +133,13 @@ document.addEventListener('keydown',function(e){
 
 let js_suffix = {|</script>|}
 
+(* Resolve this run's output directory: a directory handed down by a calling
+   tool (or --out-dir) wins; otherwise $VERACITY_OUT; otherwise a fresh
+   ./veracity_output/run_NNNN/ in the CWD.  Output lands next to the user's
+   work rather than in /tmp, where it used to be reaped and unfindable. *)
 let create_session_dir () =
-  (* Filename.temp_file gives us a unique name; remove the dummy file,
-     create a directory instead. *)
-  let base = Filename.temp_file ~temp_dir:"/tmp" "veracity_" "" in
-  Sys.remove base;
-  Unix.mkdir base 0o755;
-  base
+  Servois2.Rundir.resolve ~root:Util.output_root ~tool:"veracity"
+    ~env_var:"VERACITY_OUT"
 
 let generate ~source_file ~session_dir ~records =
   (* 1. Read source *)
@@ -262,4 +262,20 @@ let generate ~source_file ~session_dir ~records =
   let oc = open_out out_path in
   output_string oc html;
   close_out oc;
+
+  (* Same manifest schema at every level of the tree, so one script can walk it
+     from any node.  Each commute subdir is a Servois2 run, recorded by relative
+     path so the tree stays movable. *)
+  let children =
+    List.map
+      (fun (r : Util.commute_record) ->
+        { Servois2.Rundir.child_tool = "servois2";
+          child_path = Filename.basename r.Util.subdir })
+      records
+  in
+  Servois2.Rundir.write_manifest ~dir:session_dir ~tool:"veracity"
+    ~input:source_file
+    ~result:(Printf.sprintf "%d commutes" (List.length records))
+    ~artifacts:[ { Servois2.Rundir.kind = "report"; path = "index.html" } ]
+    ~children ();
   out_path

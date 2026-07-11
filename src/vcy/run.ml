@@ -450,8 +450,9 @@ module RunInfer : Runner = struct
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
-    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
@@ -582,8 +583,9 @@ module RunVerify : Runner = struct
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
-    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ] |>
     Arg.align
 

@@ -5,3 +5,6 @@ reports/test/~$speedup-table.xlsx
 .vscode
 _build/**
 src/vcy/vcy_parser.conflicts
+
+# per-run output trees (Rundir)
+veracity_output/

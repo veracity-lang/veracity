@@ -30,6 +30,14 @@ OUnit2 tests only (no benchmark files needed):
 cd src && dune runtest
 ```
 
+## Output organization
+
+Everything a run writes goes under `./veracity_output/run_NNNN/` (with a `latest` symlink), not `/tmp`. Override with `--out-dir DIR` or `$VERACITY_OUT`. When Veracity is driven as a library by a tool above it (ConQuoer), that tool passes `out_dir` in `Veracity.options` and this run nests inside *its* tree instead.
+
+Veracity in turn hands each commute a subdirectory (`commute_NNNN/`) and points Servois2 at it via `Servois2.Util.output_dir`, so the Servois2 queries for a commute land beside the report that describes it. Note `Analyze.phi_of_blocks` allocates that subdir *before* calling `compile_blocks_to_spec`, which writes `veracity_spec.smt` through `Servois2.Util.outfile` — allocate later and the spec escapes into a stray `servois2_output/` tree.
+
+The shared mechanism is `Servois2.Rundir` (`src/servois2/src/rundir.ml`); the root cell for this layer is `Util.output_root`. Each run also writes a `manifest.json` (tool, input, args, result, artifacts, children) using the same schema as the layers above and below.
+
 ## Architecture
 
 Veracity is an OCaml project built with dune. The source lives entirely under `src/`.

@@ -187,3 +187,8 @@ let session_dir     : string option ref       = ref None
 let commute_counter : int ref                 = ref 0
 let commute_records : commute_record list ref = ref []
 let pending_subdir  : string option ref       = ref None
+
+(* Directory handed down by a calling tool (conquoer) or set by --out-dir.
+   When set, the session dir *is* this directory rather than a fresh
+   veracity_output/run_NNNN/ of our own. *)
+let output_root : string option ref = ref None
