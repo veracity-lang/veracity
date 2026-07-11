@@ -37,19 +37,26 @@ Every API function accepts any of the three forms. `File` reads and parses the f
 
 ```ocaml
 type options = {
-  prover  : [ `CVC4 | `CVC5 | `Z3 ];
-  timeout : float option;
-  use_ae  : bool;
-  html    : bool;
+  prover          : [ `CVC4 | `CVC5 | `Z3 | `Yices ];
+  timeout         : float option;
+  use_ae          : bool;
+  html            : bool;
+  silent          : bool;
+  cvc5_extra_args : string list;
 }
 
 val default_options : options
-(* { prover = `CVC5; timeout = None; use_ae = false; html = false } *)
+(* { prover = `CVC5; timeout = None; use_ae = false; html = false;
+      silent = true; cvc5_extra_args = [] } *)
 ```
 
 `use_ae` enables forall/exists (AE) mode in Servois2, which is required when the program contains `havoc` statements.
 
-`html` generates a self-contained HTML report in a fresh `/tmp/veracity_*` directory. Only meaningful with `infer`; the path to `index.html` is returned as the second element of the `Ok` tuple.
+`html` generates a self-contained HTML report in a fresh `/tmp/veracity_*` directory. Only meaningful with `infer` and `verify`; the path to `index.html` is returned as the second element of the `Ok` tuple.
+
+`silent` suppresses stdout output from the underlying interpreter during inference/verification (default: `true`).
+
+`cvc5_extra_args` passes additional command-line arguments directly to CVC5. Ignored for other provers.
 
 ### `error`
 
@@ -58,7 +65,8 @@ type error =
   | ParseError  of string   (* lexer/parser failure *)
   | InterpError of string   (* runtime error during interpretation *)
   | InferError  of string   (* failure during condition inference *)
-  | VerifyError of string   (* failure during condition verification *)
+  | VerifyError of string   (* failure during condition verification,
+                                invariant check, or assertion check *)
 ```
 
 ### `api_result`
@@ -156,14 +164,38 @@ match Veracity.verify ~opts (Veracity.File "benchmarks/verify/even-odd.vcy") wit
 | Error _ -> assert false
 ```
 
-**HTML report.** Generate a self-contained HTML report alongside verification:
+### `check_invariants`
 
 ```ocaml
-let opts = { Veracity.default_options with prover = `CVC5; html = true } in
-match Veracity.verify ~opts (Veracity.File "benchmarks/verify/even-odd.vcy") with
-| Ok ((), Some path) -> Printf.printf "Report: %s\n" path
-| Ok ((), None)      -> assert false
-| Error _            -> ()
+val check_invariants : ?opts:options -> input -> unit api_result
+```
+
+Checks that every `while` loop annotated with `invariant <expr>` satisfies the inductive step: given `invariant ∧ guard` holds at the top of the body, `invariant` still holds at the bottom. Uses the existing assert-VCG infrastructure internally.
+
+Returns `Ok ()` if all invariants hold, `Error (VerifyError _)` if any invariant fails or the solver cannot decide.
+
+```ocaml
+let opts = { Veracity.default_options with prover = `CVC5 } in
+match Veracity.check_invariants ~opts (Veracity.File "benchmarks/invariants/inc.vcy") with
+| Ok ()  -> print_endline "All invariants hold."
+| Error (Veracity.VerifyError msg) -> Printf.eprintf "Invariant failure: %s\n" msg
+| Error _ -> assert false
+```
+
+### `check_assertions`
+
+```ocaml
+val check_assertions : ?opts:options -> input -> (unit * string option) api_result
+```
+
+Checks that every `assert()` statement in the program holds. Uses forward symbolic execution (VCGen) to propagate facts from `assume`, variable declarations, and assignments before each assertion. Returns `Ok ((), html_path)` if all assertions hold; `Error (VerifyError _)` if any assertion fails.
+
+```ocaml
+let opts = { Veracity.default_options with prover = `CVC5 } in
+match Veracity.check_assertions ~opts (Veracity.File "benchmarks/vcgen/assert.vcy") with
+| Ok ((), _) -> print_endline "All assertions hold."
+| Error (Veracity.VerifyError msg) -> Printf.eprintf "Assertion failure: %s\n" msg
+| Error _ -> assert false
 ```
 
 ## Error handling summary
@@ -176,6 +208,8 @@ match Veracity.verify ~opts (Veracity.File "benchmarks/verify/even-odd.vcy") wit
 | `havoc` present but `use_ae = false` | `InferError` / `VerifyError` |
 | Solver or analysis failure during inference | `InferError` |
 | Solver or analysis failure during verification | `VerifyError` |
+| Loop invariant fails or solver cannot decide | `VerifyError` |
+| Assertion fails or solver cannot decide | `VerifyError` |
 
 ## Complete example
 
