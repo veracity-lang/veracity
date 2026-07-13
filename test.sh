@@ -25,6 +25,32 @@ for f in benchmarks/verify/*.vcy; do
   run "$f" "$VCY" verify "$f" --prover cvc5
 done
 
+# These programs are meant to fail verification -- a failing condition is what
+# produces a counterexample in the first place, and `verify` exits non-zero for
+# it. So the exit status is not the thing to assert; the table is.
+run_table() {
+  local f=$1
+  local d; d=$(mktemp -d)
+  "$VCY" verify "$f" --prover cvc5 --html --out-dir "$d" > /dev/null 2>&1 || true
+  if [ -n "$(find "$d" -name expr_table.html)" ]; then
+    echo "  PASS $f (table)"; pass=$((pass+1))
+  else
+    echo "  FAIL $f (table)"; fail=$((fail+1))
+  fi
+  rm -rf "$d"
+}
+
+echo "=== benchmarks/models ==="
+for f in benchmarks/models/seq-read-after-write.vcy \
+         benchmarks/models/array-write-conflict.vcy \
+         benchmarks/models/heap-read-after-write.vcy; do
+  run_table "$f"
+done
+# Known limitation: the loop summarisation finds no counterexample, so there is
+# no model and no table. Exit status only -- see the header of that file.
+run "benchmarks/models/loop-read-after-write.vcy" \
+  "$VCY" verify benchmarks/models/loop-read-after-write.vcy --prover cvc5
+
 echo "=== benchmarks/prepost ==="
 for f in benchmarks/prepost/*.vcy; do
   run "$f" "$VCY" infer "$f" --prover cvc5

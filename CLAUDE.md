@@ -38,6 +38,18 @@ Veracity in turn hands each commute a subdirectory (`commute_NNNN/`) and points 
 
 The shared mechanism is `Servois2.Rundir` (`src/servois2/src/rundir.ml`); the root cell for this layer is `Util.output_root`. Each run also writes a `manifest.json` (tool, input, args, result, artifacts, children) using the same schema as the layers above and below.
 
+`Html_output.svgs_of_subdir` inlines *every* `.svg` and `.html` file it finds in a `commute_NNNN/` directory, in sorted order — so dropping a fragment there is all it takes to get it into the report.
+
+### Counterexample model table (`src/analysis/model_table.ml`)
+
+A SAT model comes back in terms of Servois2's state variables, which is not what the user wrote. `Model_table` re-keys it by the expressions appearing in the commute block and writes `expr_table.html` into the commute subdir. See `benchmarks/models/`.
+
+The values come from `Solve.extra_model_exprs`: `Analyze.verify_of_block` sets that ref to a probe for each expression at each state version before the query runs, and Servois2 appends them to its `(get-value ...)` and records the answers in `Solve.extra_models`. Three things constrain what can be probed:
+
+- **Only scalars.** Asking for the value of an array-valued term gets back a `(store ...)`, which Veracity's model parser cannot read — it would abort the run. So `r` is dropped and `r[0]` kept. The test is made against the SMT sorts in `spec.state`, not Veracity types: locals like `r` are absent from `gstates` and would silently infer as `int`.
+- **Only the forward run, under `-ae`.** The bowtie encoding declares all five state versions (`""`, `1`, `12`, `2`, `21`) as ordinary constants, so both interleavings can be shown and their disagreement highlighted — that disagreement *is* the counterexample. The AE encoding existentially binds the reversed run to fresh names (`cw2`, `cw21`), leaving the declared `c2`/`c21` unconstrained, so `Model_table.columns ~use_ae` drops those columns rather than reporting junk.
+- **Base names, not SSA names.** Probes are built with `exp_to_smt_exp ~indexed:false`, which bypasses the version mangling; the suffix for the state version is applied afterwards. Translating a heap deref also appends to the global `Spec_generator.deref_conds`, so `expr_table` clears it — we are probing, not building a query, and a leftover would be picked up as a conjunct by whoever next drains that global.
+
 ## Architecture
 
 Veracity is an OCaml project built with dune. The source lives entirely under `src/`.

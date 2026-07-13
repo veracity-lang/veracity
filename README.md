@@ -79,7 +79,7 @@ Z3 and Yices are also supported.
 | `-ae`           | infer, verify | Forall/exists mode — required when the program contains `havoc` |
 | `--timeout N`   | infer, verify | Per-query timeout in seconds |
 | `--diagram`     | infer         | Write Servois2 dot/SMT files to disk |
-| `--html`        | infer, verify | Generate a self-contained HTML report in `/tmp/` |
+| `--html`        | infer, verify | Generate a self-contained HTML report in `./veracity_output/run_NNNN/` |
 | `--htmlopen`    | infer, verify | Like `--html`, and open the report in the browser |
 | `-q`            | infer, verify | Quiet: print conditions only |
 | `--silent`      | infer, verify | Suppress all stdout output |
@@ -160,6 +160,31 @@ parenthesise if you need to bound it. Quantified conditions are discharged by
 the SMT solver, so they are only meaningful in `verify` (and in pre/post
 conditions) — inference never synthesises a quantifier, and quantifiers are not
 executable, so a `commute` condition containing one cannot be run by `interp`.
+
+#### Reading a counterexample
+
+When `verify` rejects a condition, the solver hands back a model. Servois2 tabulates
+it in `heap_table.html`, but keyed by the SMT *state variables* — so reading it means
+mentally undoing Veracity's translation of the program.
+
+With `--html`, Veracity also writes `expr_table.html` into each `commute_NNNN/`
+directory (the report inlines it), keyed instead by the expressions as written in
+the commute block, alongside the SMT term each one compiled to:
+
+| Veracity expression | SMT expression | initial | after block 1 | after block 1; block 2 | after block 2 | after block 2; block 1 |
+|---|---|---|---|---|---|---|
+| `l1->value` | `(select heap_value l1)` | 0 | 1 | 1 | 0 | 1 |
+| `x` | `x` | 0 | 0 | **1** | 0 | **0** |
+
+A commutativity counterexample *is* the disagreement between the two interleavings,
+so rows whose two final states differ are highlighted: above, `x` sees the new cell
+value in one order and the old one in the other.
+
+Both interleavings are shown only under the default encoding. Under `-ae` the
+reversed run is existentially bound to fresh variables, which leaves the reversed
+columns unconstrained, so they are omitted rather than reported as junk.
+
+See `benchmarks/models/` for worked examples.
 
 ### Loop invariants
 

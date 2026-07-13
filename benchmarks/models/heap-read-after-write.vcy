@@ -1,0 +1,26 @@
+/* Model table: heap dereferences mapped back to source.
+ *
+ *   ./vcy verify benchmarks/models/heap-read-after-write.vcy --prover cvc5 --html
+ *
+ * This is the case the table exists for. The SMT state is heap_value /
+ * heap_next / heap_alloc, which say nothing to a reader of the source; the
+ * table shows the row as the Veracity expression l1->value alongside its
+ * translation (select heap_value l1).
+ *
+ * Block 2 reads the cell block 1 overwrites, so x should be flagged as
+ * diverging: it sees the new value in one order and the old one in the other.
+ */
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+
+    tloc l1 = new { x {} null };
+    tloc l2 = new { y {} null };
+
+    commute (true) { /* false */
+        { l1 = new { 1 {} null }; }
+        { x = l1 -> value; }
+    }
+
+    return 0;
+}

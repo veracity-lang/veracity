@@ -302,6 +302,23 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
+  let state_types =
+    List.map (fun (v, t) -> (Servois2.Smt.string_of_var v, t)) spec.state in
+  let state_names = List.map fst state_types in
+  (* Probe every commute-block expression at each state version, so a SAT
+     counterexample can be tabulated against the source rather than against
+     Servois2's state variables.  Only when we are already dumping queries. *)
+  let expr_tbl =
+    if !Servois2.Util.dump_queries then Model_table.expr_table blks state_types
+    else [] in
+  (* Which state versions carry real values depends on the encoding: the AE
+     query existentially binds the reversed run, so only bowtie can show both
+     interleavings. *)
+  let columns =
+    Model_table.columns ~use_ae:(!Util.servois2_verify_option).use_ae in
+  Servois2.Solve.extra_model_exprs :=
+    Model_table.probes ~columns expr_tbl state_names;
+  Servois2.Solve.extra_models := [];
   begin match cv with
   | CommuteVarLM | CommuteVarLMCtx _ -> Servois2.Solve.mode := Servois2.Solve.LeftMover
   | CommuteVarRM | CommuteVarRMCtx _ -> Servois2.Solve.mode := Servois2.Solve.RightMover
@@ -322,5 +339,11 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
     (main, compl)
   in
   Servois2.Solve.mode := Servois2.Solve.Bowtie;
+  (* The two commute blocks are compiled to auto-generated method names
+     (dummyMethod_N), which mean nothing to the reader: the column headings name
+     the blocks as written instead. *)
+  Model_table.write ~columns ~table:expr_tbl ~state_names;
+  Servois2.Solve.extra_model_exprs := [];
+  Servois2.Solve.extra_models := [];
   Servois2.Util.finalize_examine m1 m2 "verify";
   result

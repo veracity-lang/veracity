@@ -1,0 +1,24 @@
+/* Model table: array-valued state.
+ *
+ *   ./vcy verify benchmarks/models/array-write-conflict.vcy --prover cvc5 --html
+ *
+ * Exercises the scalar filter. The array r itself cannot be probed -- the
+ * solver would answer with a (store ...) term that the model parser cannot
+ * read -- so r is excluded from the table while r[0] and r[1] are kept as
+ * (select r 0) / (select r 1) rows, which are the useful ones anyway.
+ *
+ * Both blocks write r[0], so r[0] should be flagged as diverging.
+ */
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    int[] r = new int[4];
+
+    mutex_init(0);
+    commute (true) { /* false */
+        { mutex_lock(0); r[0] = 1; x = r[1]; mutex_unlock(0); }
+        { mutex_lock(0); if (r[0] > 0) { r[0] = 2; } mutex_unlock(0); }
+    }
+
+    return x;
+}
