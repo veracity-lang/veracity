@@ -323,8 +323,8 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
     | MethodL (id, {pure;func;_}) ->
       func (env,args)
     end
-  | Exists _ ->
-    raise @@ NotImplemented "exists is only supported in pre/post conditions, not in executable code"
+  | Exists _ | Forall _ ->
+    raise @@ NotImplemented "quantifiers are only supported in pre/post and commute conditions, not in executable code"
   | Bop (op, en1, en2) ->
     interp_binop env op loc en1 en2
   | Uop (op, en)       ->
@@ -1003,6 +1003,7 @@ let cook_calls (g : global_env) : global_env =
       | HDerefValue l -> HDerefValue(cook_calls_of_exp l)
       | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
       | Exists (id, ty, body) -> Exists (id, ty, cook_calls_of_exp body)
+      | Forall (id, ty, body) -> Forall (id, ty, cook_calls_of_exp body)
       | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))
     in
     node_up e e'

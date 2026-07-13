@@ -1,0 +1,21 @@
+/* Commutativity condition with a universal quantifier.
+ *
+ * The two blocks race on x: if either guard fires they write different
+ * values and the order is observable. They commute only when no entry of
+ * a can enable a guard -- a fact about *every* index, not just i and j,
+ * so the condition is not expressible without a quantifier.
+ */
+int main(int argc, string[] argv) {
+    int i = int_of_string(argv[1]);
+    int j = int_of_string(argv[2]);
+    int x = int_of_string(argv[3]);
+    int[] a = new int[10];
+
+    mutex_init(0);
+    commute (forall k : int . a[k] == 0) {
+        { mutex_lock(0); if (a[i] != 0) { x = 1; } mutex_unlock(0); }
+        { mutex_lock(0); if (a[j] != 0) { x = 2; } mutex_unlock(0); }
+    }
+
+    return x;
+}

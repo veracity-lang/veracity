@@ -113,6 +113,7 @@
   ( "=>", FUNC);
 
   ("exists", EXISTS);
+  ("forall", FORALL);
   ("raise", RAISE);
   ("pure", PURE);
 

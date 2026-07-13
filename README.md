@@ -141,6 +141,26 @@ commute (x > 0) {   // verify this condition
 
 Variants for left/right mover analysis: `commute_left`, `commute_right`, `commute_left_ctx <ctx>`, `commute_right_ctx <ctx>`.
 
+#### Quantified conditions
+
+A condition given to `commute` (or to a mover variant) may be quantified with
+`forall` or `exists`. This is what lets you state a condition over a whole
+array rather than the finitely many indices the blocks happen to mention:
+
+```
+commute (forall k : int . a[k] == 0) {   // every entry of a is 0
+    { if (a[i] != 0) { x = 1; } }
+    { if (a[j] != 0) { x = 2; } }
+}
+```
+
+The binder's type may be omitted, in which case it defaults to `int`
+(`forall k . ...`). The body extends as far to the right as possible, so
+parenthesise if you need to bound it. Quantified conditions are discharged by
+the SMT solver, so they are only meaningful in `verify` (and in pre/post
+conditions) — inference never synthesises a quantifier, and quantifiers are not
+executable, so a `commute` condition containing one cannot be run by `interp`.
+
 ### Loop invariants
 
 Annotate a `while` loop with `invariant` to enable commutativity reasoning about loop bodies:

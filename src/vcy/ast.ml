@@ -107,6 +107,7 @@ type exp =
 | HDerefValue of exp node
 | HDerefNext of exp node
 | Exists of id * ty * exp node
+| Forall of id * ty * exp node
 
 and tmethod =
   { pure : bool

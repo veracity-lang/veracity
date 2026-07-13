@@ -179,6 +179,11 @@ module AstPP = struct
           pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
           print_exp_aux 0 fmt body;
           pp_close_box fmt ()
+      | Forall (id, ty, body) ->
+          pp_open_box fmt 0;
+          pps "forall "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
+          print_exp_aux 0 fmt body;
+          pp_close_box fmt ()
       | _ -> failwith ("print_exp_aux: match failed for ")
 
     end; if this_level < level then pps ")"
@@ -533,6 +538,8 @@ module AstML = struct
       | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1)
       | Exists (id, ty, body) ->
           sp "Exists (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
+      | Forall (id, ty, body) ->
+          sp "Forall (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
     end
 
   and string_of_exp (e:exp node) : string = 

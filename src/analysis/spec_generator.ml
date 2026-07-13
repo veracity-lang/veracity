@@ -47,7 +47,7 @@ let rec exp_uses_heap (e : exp node) = match e.elt with
   | Call (_, es) | CallRaw (_, es) -> List.exists exp_uses_heap es
   | CArr (_, es)          -> List.exists exp_uses_heap es
   | Proj (e1, _) | NewArr (_, e1) -> exp_uses_heap e1
-  | Exists (_, _, body)   -> exp_uses_heap body
+  | Exists (_, _, body) | Forall (_, _, body) -> exp_uses_heap body
   | _                     -> false
 
 and stmt_uses_heap (s : stmt node) = match s.elt with
@@ -256,7 +256,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         (t2, typ2) (* TODO: make sure if it's enough to return *)
 
       | Call (MethodL (id, {pc=Some pc;_}), el) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
-      | Exists (_, _, body) -> get_exp_term body
+      | Exists (_, _, body) | Forall (_, _, body) -> get_exp_term body
       | _ -> failwith @@ sp "get_exp_terms: undefined exp: %s" @@ AstML.string_of_exp e
   in
   let _ = get_exp_term e in
@@ -533,6 +533,12 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         let r, binds = exp_to_smt_exp body side ~indexed vctrs in
         Hashtbl.remove bound_vars id;
         EExists ([(Var id, sty_of_ty ty)], r), binds
+
+    | Forall (id, ty, body) ->
+        Hashtbl.add bound_vars id ();
+        let r, binds = exp_to_smt_exp body side ~indexed vctrs in
+        Hashtbl.remove bound_vars id;
+        EForall ([(Var id, sty_of_ty ty)], r), binds
 
     | _ -> failwith @@ sp "exp_to_smt_exp: undefined exp: %s" @@ AstML.string_of_exp e
 

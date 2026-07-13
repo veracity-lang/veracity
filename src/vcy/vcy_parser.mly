@@ -85,6 +85,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token FUNC      /* => */
 %token DARROW    /* ==> implication */
 %token EXISTS    /* exists quantifier */
+%token FORALL    /* forall quantifier */
 %token RAISE
 %token PURE
 
@@ -250,6 +251,12 @@ basic_exp:
   | EXISTS id=IDENT COLON t=ty DOT body=basic_exp
       %prec DARROW
       { loc $startpos $endpos @@ Exists(id, t, body) }
+  | FORALL id=IDENT DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Forall(id, TInt, body) }
+  | FORALL id=IDENT COLON t=ty DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Forall(id, t, body) }
 
 atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
