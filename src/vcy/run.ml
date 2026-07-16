@@ -133,7 +133,6 @@ module RunInterp : Runner = struct
   let get_execution_time = ref false
 
   let prover_name = ref ""
-  let timeout = ref None
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -143,8 +142,13 @@ module RunInterp : Runner = struct
     ; "--verbose", Arg.Set Servois2.Util.verbosity, "Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
-    ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
-    ] |>
+    (* Deprecated: despite the help text this never bounded a query -- it set
+       the whole-synthesis limit. It keeps that meaning. *)
+    ; "--timeout", Arg.Float (fun f ->
+        Servois2.Timeouts.set
+          { (Servois2.Timeouts.get ()) with Servois2.Timeouts.synth = Some f }),
+        " Deprecated alias for --timeout-synth"
+    ] @ Servois2.Timeouts.speclist |>
     Arg.align
 
   let get_prover () : (module Servois2.Provers.Prover) =
@@ -193,7 +197,10 @@ module RunInterp : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover (); timeout = !timeout
+      Servois2.Synth.default_synth_options with
+        prover = get_prover ();
+        timeout = (Servois2.Timeouts.get ()).Servois2.Timeouts.synth;
+        lattice_timeout = (Servois2.Timeouts.get ()).Servois2.Timeouts.lattice
     } in
     Util.servois2_synth_option := synth_options;
     match anons with
@@ -420,9 +427,7 @@ module RunInfer : Runner = struct
   (* Servois2 options *)
   let prover_name = ref ""
   let output_file = ref ""
-  let timeout = ref None
   let lattice = ref false
-  let lattice_timeout = ref (Some 30.)
   let use_ae = ref false
   let stronger_pred_first = ref false
   let no_cache = ref true
@@ -443,10 +448,16 @@ module RunInfer : Runner = struct
     ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"
     ; "--mcpeak-max", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max), " Use model counting based synthesis with strategy: maximum-coverage"
     ; "--mcpeak-max-poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max_poke), " Use model counting based synthesis with strategy: maximum-coverage, then poke2"
-    ; "--lattice-timeout", Arg.Float (fun f -> lattice_timeout := Some f), " Set the time limit for lattice construction"
+    ; "--lattice-timeout", Arg.Float (fun f ->
+        Servois2.Timeouts.set
+          { (Servois2.Timeouts.get ()) with Servois2.Timeouts.lattice = Some f }),
+        " Deprecated alias for --timeout-lattice"
     ; "--stronger-pred-first", Arg.Unit (fun () -> stronger_pred_first := true), " Choose stronger predicates first"
     ; "--lattice", Arg.Unit (fun () -> lattice := true), " Create and use lattice of predicate implication"
-    ; "--timeout", Arg.Float (fun f -> timeout := Some f), " Set time limit for execution"
+    ; "--timeout", Arg.Float (fun f ->
+        Servois2.Timeouts.set
+          { (Servois2.Timeouts.get ()) with Servois2.Timeouts.synth = Some f }),
+        " Deprecated alias for --timeout-synth"
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
@@ -459,9 +470,8 @@ module RunInfer : Runner = struct
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--force", Arg.Set Interp.force_infer, " Force inference of all commutativity conditions (even when one is provided)"
-    ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "-o",      Arg.Set_string output_file, "<file> Output transformed program to file. Default is stdout."
-    ] |>
+    ] @ Servois2.Timeouts.speclist |>
     Arg.align
 
   let get_prover () : (module Servois2.Provers.Prover) =
@@ -508,9 +518,9 @@ module RunInfer : Runner = struct
     let synth_options = {
       Servois2.Synth.default_synth_options with
         prover = get_prover ();
-        timeout = !timeout; 
+        timeout = (Servois2.Timeouts.get ()).Servois2.Timeouts.synth;
         lattice = !lattice;
-        lattice_timeout = !lattice_timeout;
+        lattice_timeout = (Servois2.Timeouts.get ()).Servois2.Timeouts.lattice;
         no_cache = !no_cache;
         stronger_predicates_first = !stronger_pred_first;
         use_ae = !use_ae
@@ -586,7 +596,7 @@ module RunVerify : Runner = struct
     ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
     ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
-    ] |>
+    ] @ Servois2.Timeouts.speclist |>
     Arg.align
 
   let get_prover () : (module Servois2.Provers.Prover) =
@@ -676,7 +686,7 @@ module RunAssertions : Runner = struct
 
   let speclist =
     [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
-    ] |> Arg.align
+    ] @ Servois2.Timeouts.speclist |> Arg.align
 
   let get_prover () : (module Servois2.Provers.Prover) =
     match !prover_name |> String.lowercase_ascii with
@@ -713,7 +723,7 @@ module RunInvariants : Runner = struct
     [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--silent", Arg.Set silent_flag, " Suppress interpreter stdout"
-    ] |> Arg.align
+    ] @ Servois2.Timeouts.speclist |> Arg.align
 
   let get_prover () : [ `CVC4 | `CVC5 | `Z3 | `Yices ] =
     match !prover_name |> String.lowercase_ascii with
@@ -734,6 +744,7 @@ module RunInvariants : Runner = struct
           prover  = get_prover ();
           use_ae  = !use_ae;
           silent  = !silent_flag;
+          timeouts = Servois2.Timeouts.get ();
         } in
         (match Vcy.Veracity.check_invariants ~opts (Vcy.Veracity.File prog_name) with
          | Ok () ->

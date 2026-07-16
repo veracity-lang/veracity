@@ -101,3 +101,11 @@ git submodule update --remote src/servois2 && git add src/servois2  # bump to la
 ## SMT solvers
 
 `infer` and `verify` require an SMT solver. CVC5 is recommended (`--prover cvc5`); Z3 is also supported (`--prover z3`). The `-ae` flag enables forall/exists mode and is required when the program contains `havoc` statements.
+
+### Timeouts (`src/servois2/src/timeouts.ml`)
+
+All three timeouts live in one shared record, `Servois2.Timeouts.t` — `query` (per SMT check-sat), `synth` (a whole synthesis run, `infer` only), `lattice` (lattice construction, `infer` only). It sits in the bottom layer, like `Rundir`, and every layer above threads it through the existing dependency chain. `Timeouts.speclist` defines the `--timeout-query` / `--timeout-synth` / `--timeout-lattice` flags once, so `servois2`, `vcy` and `conquoer` expose identical names, help and defaults; `--timeout` and `--lattice-timeout` remain as deprecated aliases. Resolution mirrors `Rundir`: caller-supplied (via `Veracity.options.timeouts`, or the CLI mutating `Timeouts.current`) → CLI flag → env var (`SMT_TIMEOUT_*`) → default.
+
+Two design points worth keeping:
+- **`query` is enforced by the solver, not SIGALRM.** `Timeouts.prover_args` turns it into each prover's own flag (`--tlimit-per` for CVC5, `-t:` for Z3, `--timeout=` for Yices), appended in `Provers.run_prover`. This is deliberate: there is one `ITIMER_REAL` per process and synthesis already holds it (`Util.run_with_time_limit`), so a per-query SIGALRM would clobber the synth timer. It is also what closes the old holes — CVC5's limit used to be hardcoded, and Z3 had none at all, so it ran unbounded.
+- **`default_synth_options` reads `synth`/`lattice` from the record**, so the library default and the CLI default cannot drift — they used to (`lattice` defaulted to `None` in the library but 30s in the CLI, and enabling the lattice without setting it hit an `Option.get`).

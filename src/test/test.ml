@@ -89,4 +89,43 @@ let suite =
     ]
 
 
-let () = run_test_tt_main suite
+(* Timeout standardization: pure checks on Servois2.Timeouts, no solver or
+   subprocess involved, so these run cleanly regardless of the program-file
+   fixtures above. *)
+module T = Servois2.Timeouts
+
+let with_query q f =
+  let saved = T.get () in
+  Fun.protect ~finally:(fun () -> T.set saved) (fun () ->
+    T.set { (T.get ()) with T.query = q }; f ())
+
+let timeouts_suite =
+  "Timeouts" >::: [
+    (* The per-query limit is turned into the solver's own flag: this is what
+       makes it configurable, and it must track [query]. *)
+    "cvc5 flag tracks query" >:: (fun _ ->
+      with_query 7.5 (fun () ->
+        assert_equal ~printer:(String.concat " ")
+          [ "--tlimit-per=7500" ]
+          (Array.to_list (T.prover_args "CVC5"))));
+    "z3 flag tracks query" >:: (fun _ ->
+      with_query 7.5 (fun () ->
+        assert_equal ~printer:(String.concat " ")
+          [ "-t:7500" ] (Array.to_list (T.prover_args "Z3"))));
+    (* Z3 used to have no limit at all; now it always gets one. *)
+    "z3 is bounded by default" >:: (fun _ ->
+      assert_bool "z3 has a timeout flag"
+        (Array.length (T.prover_args "Z3") > 0));
+    "unknown prover: no flag" >:: (fun _ ->
+      assert_equal [||] (T.prover_args "no-such-prover"));
+    (* "none"/"0"/"off" disable the optional limits. *)
+    "opt parsing: none" >:: (fun _ ->
+      assert_equal None (T.opt_of_arg "x" "none");
+      assert_equal None (T.opt_of_arg "x" "0");
+      assert_equal (Some 30.) (T.opt_of_arg "x" "30"));
+    "query rejects non-positive" >:: (fun _ ->
+      assert_raises (T.Bad_timeout ("x", "0"))
+        (fun () -> T.float_of_arg "x" "0"));
+  ]
+
+let () = run_test_tt_main ("all" >::: [ suite; timeouts_suite ])

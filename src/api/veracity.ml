@@ -8,7 +8,7 @@ type input =
 
 type options = {
   prover  : [ `CVC4 | `CVC5 | `Z3 | `Yices ];
-  timeout : float option;
+  timeouts : Servois2.Timeouts.t;
   use_ae  : bool;
   html    : bool;
   silent  : bool;
@@ -18,7 +18,7 @@ type options = {
 
 let default_options = {
   prover  = `CVC5;
-  timeout = None;
+  timeouts = Servois2.Timeouts.default;
   use_ae  = false;
   html    = false;
   silent  = true;
@@ -51,10 +51,15 @@ let configure opts =
     | `Z3   -> (module Servois2.Provers.ProverZ3)
     | `Yices -> (module Servois2.Provers.ProverYices)
   in
+  (* Publish the caller's timeouts to the shared record before building the
+     synth options, since default_synth_options reads its synth/lattice limits
+     from there and the per-query limit is applied at solver-invocation time. *)
+  Servois2.Timeouts.set opts.timeouts;
   Util.servois2_synth_option := {
     Servois2.Synth.default_synth_options with
       prover  = prover;
-      timeout = opts.timeout;
+      timeout = opts.timeouts.Servois2.Timeouts.synth;
+      lattice_timeout = opts.timeouts.Servois2.Timeouts.lattice;
       use_ae  = opts.use_ae;
   };
   Util.servois2_verify_option := {

@@ -77,13 +77,22 @@ Z3 and Yices are also supported.
 | `--prover z3`   | infer, verify, invariants, assertions | Use Z3 |
 | `--prover yices`| infer, verify, invariants, assertions | Use Yices |
 | `-ae`           | infer, verify | Forall/exists mode — required when the program contains `havoc` |
-| `--timeout N`   | infer, verify | Per-query timeout in seconds |
+| `--timeout-query N`   | infer, verify, invariants, assertions | Time limit for one SMT query, seconds (default 120); enforced by the solver |
+| `--timeout-synth N`   | infer | Time limit for a whole synthesis run, or `none` (default `none`) |
+| `--timeout-lattice N` | infer | Time limit for lattice construction, or `none` (default 30) |
 | `--diagram`     | infer         | Write Servois2 dot/SMT files to disk |
 | `--html`        | infer, verify | Generate a self-contained HTML report in `./veracity_output/run_NNNN/` |
 | `--htmlopen`    | infer, verify | Like `--html`, and open the report in the browser |
 | `-q`            | infer, verify | Quiet: print conditions only |
 | `--silent`      | infer, verify | Suppress all stdout output |
 | `--force`       | infer         | Re-infer even when a condition is already provided |
+
+The three `--timeout-*` flags, their defaults, and the `SMT_TIMEOUT_QUERY` /
+`SMT_TIMEOUT_SYNTH` / `SMT_TIMEOUT_LATTICE` environment variables are shared
+verbatim across `servois2`, `vcy` and `conquoer` (defined once in
+`Servois2.Timeouts`). The older `--timeout` and `--lattice-timeout` are kept as
+deprecated aliases for `--timeout-synth` and `--timeout-lattice`. The optional
+limits accept `none` (also `off`, `0`) to disable.
 
 ### Examples
 

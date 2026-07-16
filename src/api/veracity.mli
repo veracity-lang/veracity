@@ -9,7 +9,8 @@ type input =
 (** Options for inference and verification calls. *)
 type options = {
   prover  : [ `CVC4 | `CVC5 | `Z3 | `Yices ];
-  timeout : float option;
+  timeouts : Servois2.Timeouts.t;
+  (** Per-query / synthesis / lattice limits. See {!Servois2.Timeouts}. *)
   use_ae  : bool;
   html    : bool;    (** Generate a self-contained HTML report; [infer] returns its path. *)
   silent  : bool;    (** Suppress all stdout output from the interpreter (default [true] via API). *)
