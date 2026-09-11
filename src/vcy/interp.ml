@@ -379,15 +379,11 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
     | env, VLoc (Some(loc_id)) ->
       begin failwith "not here2"; match Hashtbl.find_opt Vcylib.heap_store loc_id with
       | None -> raise @@ ValueFailure ("heap proj: unallocated location " ^ Int64.to_string loc_id, loc)
-      | Some (n, next) ->
-        begin match fid with
-        | "val"  -> env, VInt n
-        | "next" ->
-          begin match next with
-          | None   -> env, VNull TLoc
-          | Some l -> env, VLoc (Some(l))
-          end
-        | _ -> raise @@ TypeFailure ("Unknown heap field " ^ fid, loc)
+      | Some _ ->
+        (* Projection through a location reads a declared field by name. *)
+        begin match heap_field_index fid with
+        | None -> raise @@ TypeFailure ("Unknown heap field " ^ fid, loc)
+        | Some _ -> env, Vcylib.heap_get_field loc_id fid
         end
       end
     | _ -> raise @@ TypeFailure ("Projection source is not a struct or loc", loc)
@@ -396,42 +392,38 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
     let loc_id = !Vcylib.heap_next_loc in
     Vcylib.heap_next_loc := Int64.succ loc_id;
     env, VLoc loc_id *)
-  | HeapValue (eval1, eloc2) ->
-    let env, v1 = interp_exp env eval1 in
-    let env, v2 = interp_exp env eloc2 in
-    begin match v1, v2 with
-    | VInt n, VNull TLoc -> env, VHeapValue (n, None)
-    | VInt n, VLoc (Some(l))     -> env, VHeapValue (n, Some l)
-    | _ -> raise @@ TypeFailure ("HeapValue constructor: expected (int, loc)", loc)
-    end
-  | HeapAlloc (eval1, eloc2) ->
-      let env',  v = interp_exp env  eval1 in
-      let env'', l = interp_exp env' eloc2 in
-      (* get a new leap location *)
-      let newloc = Vcylib.heap_next_gen() in 
-      begin match v, l with 
-        | VInt i, VInt ii ->
-          Vcylib.heap_set newloc i (Some ii);  env'', VLoc (Some(newloc))
-        | VInt i, VLoc loc'' ->
-          Vcylib.heap_set newloc i loc'';      env'', VLoc (Some(newloc))
-        | VInt i, VNull TLoc ->
-          Vcylib.heap_set newloc i None;       env'', VLoc (Some(newloc))
-        | _ -> failwith "HeapAlloc attempted with bogus params" 
-      end 
-  | HDerefValue (eloc) ->
+  | HeapValue initializers ->
+    let env, vs =
+      List.fold_left
+        (fun (env, acc) e -> let env, v = interp_exp env e in (env, v :: acc))
+        (env, []) initializers
+    in
+    env, VHeapValue (List.rev vs)
+  | HeapAlloc initializers ->
+      if List.length initializers <> heap_arity () then
+        failwith
+          (Printf.sprintf
+             "HeapAlloc: %d initializer(s) for the declared cell {%s}"
+             (List.length initializers)
+             (String.concat "; " (heap_field_names ())));
+      let env', vs =
+        List.fold_left
+          (fun (env, acc) e -> let env, v = interp_exp env e in (env, v :: acc))
+          (env, []) initializers
+      in
+      (* get a new heap location *)
+      let newloc = Vcylib.heap_next_gen() in
+      (* A null tloc initializer is stored as VLoc None, so a field always
+         holds a value of its declared shape. *)
+      let normalize = function VNull TLoc -> VLoc None | v -> v in
+      Vcylib.heap_set_cell newloc (List.map normalize (List.rev vs));
+      env', VLoc (Some newloc)
+  | HDeref (eloc, field) ->
       let env',  l = interp_exp env eloc in
-      begin match l with 
-      | VLoc None -> failwith "HDerefValue on a null location"
-      | VLoc Some(i) ->
-        let v = Vcylib.heap_get_value i in 
-          (env',VInt v) end
-  | HDerefNext (eloc) ->
-      let env',  l = interp_exp env eloc in
-      begin match l with 
-      | VLoc None -> failwith "HDerefNext on a null location"
-      | VLoc Some(i) ->
-        let l' = Vcylib.heap_get_next i in 
-          (env',VLoc l') end
+      begin match l with
+      | VLoc None -> failwith (Printf.sprintf "->%s on a null location" field)
+      | VLoc Some(i) -> (env', Vcylib.heap_get_field i field)
+      | _ -> failwith (Printf.sprintf "->%s on a non-location" field) end
   | CallRaw (id, args) ->
     let env, args = interp_exp_seq env args in
     begin match find_binding id env BindM with
@@ -455,11 +447,11 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
     | BVLocal (ty,r)
     | BVGlobal (ty,r) ->
       begin match ty, v with
-      | TLoc, VHeapValue (n, next) ->
+      | TLoc, VHeapValue vs ->
         begin match !r with
         | VLoc Some(loc_id) ->
           failwith "not here.";
-          Hashtbl.replace Vcylib.heap_store loc_id (n, next); env
+          Hashtbl.replace Vcylib.heap_store loc_id vs; env
         | _ -> raise @@ ValueFailure ("heap write: variable is not an initialized loc", loc)
         end
       | _ ->
@@ -517,27 +509,17 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
       end
     | _ -> raise @@ TypeFailure ("Projection source is not a struct", lhs.loc)
     end
-  | HDerefValue (loc_exp) ->
+  | HDeref (loc_exp, field) ->
     begin match interp_exp env loc_exp with
     | env, VLoc (Some i) ->
-      begin match v with
-      | VInt n -> Vcylib.heap_set i n (Vcylib.heap_get_next i); env
-      | _ -> raise @@ TypeFailure ("heap->value write expects int on RHS", loc)
-      end
-    | _, VLoc None -> raise @@ ValueFailure ("heap->value write to null location", loc)
-    | _ -> raise @@ TypeFailure ("heap->value LHS does not evaluate to a location", loc)
-    end
-  | HDerefNext (loc_exp) ->
-    begin match interp_exp env loc_exp with
-    | env, VLoc (Some i) ->
-      let cur_val = Vcylib.heap_get_value i in
-      begin match v with
-      | VLoc next_opt -> Vcylib.heap_set i cur_val next_opt; env
-      | VNull _       -> Vcylib.heap_set i cur_val None;     env
-      | _ -> raise @@ TypeFailure ("heap->next write expects loc on RHS", loc)
-      end
-    | _, VLoc None -> raise @@ ValueFailure ("heap->next write to null location", loc)
-    | _ -> raise @@ TypeFailure ("heap->next LHS does not evaluate to a location", loc)
+      (* A null written through a tloc field is stored as VLoc None, matching
+         how allocation normalizes it. *)
+      let v = match v with VNull TLoc -> VLoc None | v -> v in
+      Vcylib.heap_set_field i field v; env
+    | _, VLoc None ->
+      raise @@ ValueFailure (Printf.sprintf "heap->%s write to null location" field, loc)
+    | _ ->
+      raise @@ TypeFailure (Printf.sprintf "heap->%s LHS does not evaluate to a location" field, loc)
     end
   | _ -> raise @@ TypeFailure ("assignment LHS", loc)
 
@@ -958,6 +940,12 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | Gsdecl {elt = {sname;fields}; loc = _} :: tl ->
     let s = sname, List.map (fun {field_name;ftyp} -> field_name,ftyp) fields
     in construct_env {g with structs = s :: g.structs} globals tl
+  (* A cell declaration installs the heap layout. It carries no bindings, so
+     nothing is added to the environment; it just has to be consumed, or a
+     program that declares one fails to match here. *)
+  | Gcelldecl fields :: tl ->
+    heap_layout := fields;
+    construct_env g globals tl
 
 (* Convert all SCallRaw to SCall, and CallRaw to Call 
  * All that needs adjusting is methods.
@@ -994,14 +982,11 @@ let cook_calls (g : global_env) : global_env =
         CStruct (id, List.map (fun (i, e) -> i, cook_calls_of_exp e) el)
       | Proj (e, i) ->
         Proj (cook_calls_of_exp e, i)
-      | HeapValue (e1, e2) ->
-        HeapValue (cook_calls_of_exp e1, cook_calls_of_exp e2)
-      | HeapAlloc (e1, e2) ->
-        HeapAlloc (cook_calls_of_exp e1, cook_calls_of_exp e2)
+      | HeapValue es -> HeapValue (List.map cook_calls_of_exp es)
+      | HeapAlloc es -> HeapAlloc (List.map cook_calls_of_exp es)
       | Id _ | CNull _ | CBool _
       | CInt _ | CStr _ | NewHashTable _ -> e.elt
-      | HDerefValue l -> HDerefValue(cook_calls_of_exp l)
-      | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
+      | HDeref (l, field) -> HDeref (cook_calls_of_exp l, field)
       | Exists (id, ty, body) -> Exists (id, ty, cook_calls_of_exp body)
       | Forall (id, ty, body) -> Forall (id, ty, cook_calls_of_exp body)
       | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))

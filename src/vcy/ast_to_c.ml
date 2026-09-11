@@ -62,7 +62,7 @@ and c_of_stmt = function
     | Havoc(e) ->
       let rec base_id = function
         | {elt=Id n;_} -> n | {elt=Index(b,_);_} -> base_id b
-        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
+        | {elt=HDeref (b, _);_} -> base_id b
         | _ -> failwith "havoc: unsupported lvalue"
       in
       sp "/* %s = __VERIFIER_nondet_int() */" (!mangle (base_id e))

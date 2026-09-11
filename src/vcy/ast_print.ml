@@ -89,8 +89,10 @@ module AstPP = struct
     | TStruct sid -> pps sid
     | TArr ty -> print_ty_aux fmt ty; pps "[]"
     | TLoc -> pps "tloc"
-    | THeapValue (tyi, tyl) ->
-      pps "HeapValue["; print_ty_aux fmt tyi; pps ", "; print_ty_aux fmt tyl; pps "]"
+    | THeapValue tys ->
+      pps "HeapValue[";
+      List.iteri (fun i ty -> if i > 0 then pps ", "; print_ty_aux fmt ty) tys;
+      pps "]"
 
   and print_exp_aux level fmt e =
     let pps = pp_print_string fmt in
@@ -156,24 +158,38 @@ module AstPP = struct
           pps " : ";
           print_exp_aux this_level fmt e;
           pp_close_box fmt ()
-      | HeapValue (e1, e2 ) ->
+      (* A two-field cell keeps the historical {a{}b} spelling so existing
+         .vcy text round-trips; anything else prints comma-separated. *)
+      | HeapValue [ e1; e2 ] ->
           pp_open_box fmt 0;
           pps "heapval{";
           print_exp_aux this_level fmt e1;
           pps "{}";
           print_exp_aux this_level fmt e2;
           pps "}";
-          pp_close_box fmt () 
-      | HeapAlloc (e1, e2 ) ->
+          pp_close_box fmt ()
+      | HeapValue es ->
+          pp_open_box fmt 0;
+          pps "heapval{";
+          List.iteri (fun i e -> if i > 0 then pps ", "; print_exp_aux this_level fmt e) es;
+          pps "}";
+          pp_close_box fmt ()
+      | HeapAlloc [ e1; e2 ] ->
           pp_open_box fmt 0;
           pps "new {";
           print_exp_aux this_level fmt e1;
           pps "{}";
           print_exp_aux this_level fmt e2;
           pps "}";
-          pp_close_box fmt () 
-      | HDerefNext  (l1) -> print_exp_aux this_level fmt l1; pps "->next"
-      | HDerefValue (l1) -> print_exp_aux this_level fmt l1; pps "->value"
+          pp_close_box fmt ()
+      | HeapAlloc es ->
+          pp_open_box fmt 0;
+          pps "new {";
+          List.iteri (fun i e -> if i > 0 then pps ", "; print_exp_aux this_level fmt e) es;
+          pps "}";
+          pp_close_box fmt ()
+      | HDeref (l1, field) ->
+          print_exp_aux this_level fmt l1; pps ("->" ^ field)
       | Exists (id, ty, body) ->
           pp_open_box fmt 0;
           pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
@@ -379,6 +395,18 @@ module AstPP = struct
       | Gvdecl d -> print_gdecl_aux fmt d.elt
       | Gmdecl m -> print_mdecl_aux fmt m
       | Gsdecl s -> print_sdecl_aux fmt s.elt
+      | Gcelldecl fields ->
+          let pps = pp_print_string fmt in
+          pp_open_vbox fmt 0;
+          pps "cell {";
+          List.iter
+            (fun (f : heap_field) ->
+              pp_print_cut fmt ();
+              pps "  "; print_ty_aux fmt f.hf_type; pps (" " ^ f.hf_name ^ ";"))
+            fields;
+          pp_print_cut fmt ();
+          pps "}";
+          pp_close_box fmt ()
     end
 
   let print_prog_aux fmt p =
@@ -457,8 +485,8 @@ module AstML = struct
     | TArr ty -> sp "TArr (%s)" @@ string_of_ty ty
     | TStruct id -> sp "TStruct (%s)" @@ string_of_id id
     | TLoc -> "TLoc"
-    | THeapValue (tyi, tyl) ->
-      sp "THeapValue (%s, %s)" (string_of_ty tyi) (string_of_ty tyl)
+    | THeapValue tys ->
+      sp "THeapValue (%s)" (String.concat ", " (List.map string_of_ty tys))
 
   let string_of_binop : binop -> string = function
     | Add    -> "Add"
@@ -499,10 +527,9 @@ module AstML = struct
       | CNull t -> sp "CNull %s" (string_of_ty t)
       | CBool b -> sp "CBool %b" b
       | CInt i -> sp "CInt %LiL" i
-      | HeapValue (e1, e2) -> sp "HeapValue (%s, %s)" (string_of_exp e1) (string_of_exp e2)
-      | HeapAlloc (e1, e2) -> sp "HeapAlloc (%s, %s)" (string_of_exp e1) (string_of_exp e2)
-      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1) 
-      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1) 
+      | HeapValue es -> sp "HeapValue (%s)" (String.concat ", " (List.map string_of_exp es))
+      | HeapAlloc es -> sp "HeapAlloc (%s)" (String.concat ", " (List.map string_of_exp es))
+      | HDeref (e1, field) -> sp "HDeref (%s, %s)" (string_of_exp e1) field
       | CStr s -> sp "CStr %S" s
       | CArr (t,cs) -> sp "CArr (%s, %s)" 
                           (string_of_ty t) 
@@ -533,9 +560,8 @@ module AstML = struct
           id
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
-      | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
-      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1)
-      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1)
+      | HeapValue es -> sp "HeapVal (%s)" (String.concat ", " (List.map string_of_exp es))
+      | HDeref (e1, field) -> sp "HDeref (%s, %s)" (string_of_exp e1) field
       | Exists (id, ty, body) ->
           sp "Exists (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
       | Forall (id, ty, body) ->
@@ -638,6 +664,11 @@ module AstML = struct
     | Gvdecl d -> sp "Gvdecl (%s)" (string_of_gdecl d)
     | Gmdecl m -> sp "Gmdecl (%s)" (string_of_mdecl m)
     | Gsdecl s -> sp "Gsdecl (%s)" (string_of_sdecl s)
+    | Gcelldecl fields ->
+      sp "Gcelldecl (%s)"
+        (String.concat "; "
+           (List.map (fun (f : heap_field) ->
+              string_of_ty f.hf_type ^ " " ^ f.hf_name) fields))
 
   let string_of_prog : prog -> string =
     string_of_list string_of_decl
@@ -661,10 +692,8 @@ module AstML = struct
 
     | VLoc None -> sp "loc(null)"
     | VLoc Some(loc) -> sp "loc(%s)" (Int64.to_string loc)
-    | VHeapValue (n, None) ->
-      sp "HeapValue(%s, null)" (Int64.to_string n)
-    | VHeapValue (n, Some loc) ->
-      sp "HeapValue(%s, loc(%s))" (Int64.to_string n) (Int64.to_string loc)
+    | VHeapValue vs ->
+      sp "HeapValue(%s)" (String.concat ", " (List.map string_of_value vs))
 
     | VStruct (id,vs) ->
       List.map (fun (i,v) -> sp " %s = %s" i (string_of_value !v)) vs |>

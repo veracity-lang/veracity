@@ -87,6 +87,7 @@
   ( "/", SLASH);
 
   ( "new", NEW);
+  ( "cell", CELL);
   ( "true", TRUE);
   ( "false", FALSE);
   ( "bool", TBOOL);

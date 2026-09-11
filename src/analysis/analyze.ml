@@ -172,12 +172,16 @@ let prog_has_havoc (prog : prog) =
    too, otherwise CVC5/Z3 reject the query with "Symbol heap_alloc is not
    declared" and the assert is skipped.  They are unconstrained (harmless) when
    the program does not use the heap. *)
-let heap_model_decls : string list =
+(* Keyed by NAME, not position. The previous version paired this list with a
+   List.filteri against a parallel List.nth ["heap_value"; "heap_next";
+   "heap_alloc"], which silently mismatched the moment the list length or order
+   changed -- and it now changes with every program's declared cell. *)
+let heap_model_decls () : (string * string) list =
   let arr = Servois2.Smt.string_of_ty (Servois2.Smt.TArray (Servois2.Smt.TInt, Servois2.Smt.TInt)) in
   let int = Servois2.Smt.string_of_ty Servois2.Smt.TInt in
-  [ sp "(declare-fun heap_value () %s)" arr
-  ; sp "(declare-fun heap_next () %s)"  arr
-  ; sp "(declare-fun heap_alloc () %s)" int ]
+  List.map (fun name -> (name, sp "(declare-fun %s () %s)" name arr))
+    (Ast.heap_array_names ())
+  @ [ ("heap_alloc", sp "(declare-fun heap_alloc () %s)" int) ]
 
 let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
   let stypes = Spec_generator.get_stypes embedding_vars in
@@ -187,11 +191,9 @@ let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
   (* Avoid double-declaring a heap-model var if the embedding already has one. *)
   let declared_ids = List.map (fun (id, _) -> id) stypes in
   let heap_decls =
-    List.filteri
-      (fun i _ ->
-         let name = List.nth ["heap_value"; "heap_next"; "heap_alloc"] i in
-         not (List.mem name declared_ids))
-      heap_model_decls
+    heap_model_decls ()
+    |> List.filter (fun (name, _) -> not (List.mem name declared_ids))
+    |> List.map snd
   in
   String.concat "\n" @@
     ["(set-logic ALL)"]

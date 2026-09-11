@@ -24,11 +24,14 @@ let variable_ctr_list = (Hashtbl.create 50)
 let deref_conds : sexp list ref = ref []
 
 (*
-  heap_alloc : Int (next fresh ID)
-  heap_value : Int -> Int (loc to value)
-  heap_next  : Int -> Int (loc to next loc)
+  heap_alloc  : Int (next fresh ID)
+  heap_<field> : Int -> Int (loc to that field's contents), one per declared
+                 field of the heap cell -- see Ast.heap_layout.
+
+  A function rather than a constant: the layout is fixed by the program being
+  analyzed, so it is not known until that program has been parsed.
 *)
-let heap_model_vars = [ "heap_alloc"; "heap_value"; "heap_next" ]
+let heap_model_vars () = Ast.heap_model_var_names ()
 
 let pre = ref (EConst (CBool true))
 
@@ -39,7 +42,7 @@ let pre = ref (EConst (CBool true))
 let use_heap = ref true
 
 let rec exp_uses_heap (e : exp node) = match e.elt with
-  | HeapAlloc _ | HeapValue _ | HDerefValue _ | HDerefNext _ -> true
+  | HeapAlloc _ | HeapValue _ | HDeref _ -> true
   | Bop (_, e1, e2)       -> exp_uses_heap e1 || exp_uses_heap e2
   | Uop (_, e1)           -> exp_uses_heap e1
   | Ternary (g, t, f)     -> exp_uses_heap g  || exp_uses_heap t || exp_uses_heap f
@@ -120,19 +123,27 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
   (* heap_alloc: same number of allocations in both orders *)
   let alloc_eq = EBop (Eq, EVar (Var "heap_alloc"), EVar (VarPost "heap_alloc")) in
 
-  (* For each tloc variable v: heap_value[v] = heap_value_new[v_new] *)
-  let value_eqs = List.map (fun n ->
-    EBop (Eq,
-      EFunc ("select", [EVar (Var "heap_value"); EVar (Var n)]),
-      EFunc ("select", [EVar (VarPost "heap_value"); EVar (VarPost n)]))
-  ) loc_varnames in
-
-  (* For each tloc variable v: apply_bij(heap_next[v]) = heap_next_new[v_new] *)
-  let next_eqs = List.map (fun n ->
-    EBop (Eq,
-      apply_bij (EFunc ("select", [EVar (Var "heap_next"); EVar (Var n)])),
-      EFunc ("select", [EVar (VarPost "heap_next"); EVar (VarPost n)]))
-  ) loc_varnames in
+  (* For each declared cell field f and each tloc variable v:
+       heap_f[v] = heap_f_new[v_new]
+     with the bijection applied on the left exactly when f holds a LOCATION,
+     since a location has to be renamed across the two execution orders while
+     an integer compares as-is. That distinction used to be the hardcoded
+     split between heap_value (direct) and heap_next (bijected); it is now read
+     off the field's declared type, which is the property that actually
+     justified it. *)
+  let field_eqs =
+    List.concat_map
+      (fun (field : Ast.heap_field) ->
+        let arr = Ast.heap_array_name field.hf_name in
+        let rename = if field.hf_type = TLoc then apply_bij else Fun.id in
+        List.map
+          (fun n ->
+            EBop (Eq,
+              rename (EFunc ("select", [EVar (Var arr); EVar (Var n)])),
+              EFunc ("select", [EVar (VarPost arr); EVar (VarPost n)])))
+          loc_varnames)
+      !Ast.heap_layout
+  in
 
   (* For each tloc[] array: ∀ i. bij(arr[i]) = arr_new[i]
      Smt.TInt is qualified because open Ast (last) shadows the unqualified TInt. *)
@@ -148,16 +159,17 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
     EBop (Eq, EVar (Var n), EVar (VarPost n))
   ) other_varnames in
 
-  sexp_of_sexp_list ([alloc_eq] @ value_eqs @ next_eqs @ loc_arr_eqs @ other_eqs)
+  sexp_of_sexp_list ([alloc_eq] @ field_eqs @ loc_arr_eqs @ other_eqs)
 
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
     ) embedding_vars
     @ 
-    [ (Var "heap_value", Smt.TArray (Smt.TInt, Smt.TInt))
-    ; (Var "heap_next",  Smt.TArray (Smt.TInt, Smt.TInt))
-    ; (Var "heap_alloc", Smt.TInt)  ]
+    List.map
+      (fun name -> (Smt.Var name, Smt.TArray (Smt.TInt, Smt.TInt)))
+      (Ast.heap_array_names ())
+    @ [ (Smt.Var "heap_alloc", Smt.TInt) ]
     (* [ (Var "realWorld_data", Smt.TArray (Smt.TString, Smt.TArray(Smt.TInt, Smt.TString)))
     ; (Var "realWorld_linenum", Smt.TArray (Smt.TString, Smt.TInt))
     ; (Var "realWorld_opened", Smt.TSet Smt.TString)] *)
@@ -198,12 +210,14 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         let t2, _ = get_exp_term e2 in
         terms := !terms @ [(EFunc ("select", [t1; t2]), ty)];
         (EFunc ("select", [t1; t2]), ty)
-      | HeapAlloc (e1, e2) ->
-          let t1, ty1 = get_exp_term e1 in
-          let t2, ty2 = get_exp_term e2 in
-          (t2, ty2)
-      | HDerefValue ( l ) -> get_exp_term l
-      | HDerefNext  ( l ) -> get_exp_term l
+      | HeapAlloc initializers ->
+          (* Every initializer contributes its terms; the allocation itself is
+             represented by the last, as it was when a cell was a pair. *)
+          let terms = List.map get_exp_term initializers in
+          (match List.rev terms with
+           | last :: _ -> last
+           | [] -> failwith "HeapAlloc with no initializers")
+      | HDeref (l, _) -> get_exp_term l
 
       | Bop (op, e1, e2) ->
           let t1, ty1 = get_exp_term e1 in
@@ -324,7 +338,7 @@ let set_variable_id (var: string) (side: int) (vctrs : (string, int ref) Hashtbl
 let get_postconditions () : sexp =
   let exp_list = ref [] in
   Hashtbl.iter (fun key -> fun value -> 
-                if List.mem key heap_model_vars then exp_list := !exp_list @ [final_mangle_id !value key]
+                if List.mem key (heap_model_vars ()) then exp_list := !exp_list @ [final_mangle_id !value key]
                 else
                 match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
                 | None -> () (* loop-internal variable not in state; skip *)
@@ -486,12 +500,12 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
-      let heap_version = !(Hashtbl.find vctrs (List.hd heap_model_vars)) in
+      let heap_version = !(Hashtbl.find vctrs (List.hd (heap_model_vars ()))) in
       let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
       (* Methods that update the heap - MAybe needed later. *)
       (*
       let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_heap} = pc fun_args in
-      begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) heap_model_vars
+      begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) (heap_model_vars ())
       else () end;
       *)
       let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
@@ -508,24 +522,26 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         let e', e_binds = f e in
         EITE(i', t', e'), i_binds @ t_binds @ e_binds
         (* We deal with this in statement Assign(lhs,HeapAlloc) instead *)
-    | HDerefValue ( l ) ->
+    (* A dereference reads that field's own array. The allocation-validity
+       condition (0 <= l < heap_alloc) is the same whichever field is read. *)
+    | HDeref ( l, field ) ->
+        if Ast.heap_field_index field = None then
+          failwith
+            (Printf.sprintf
+               "spec_generator: ->%s is not a field of the declared cell {%s}"
+               field
+               (String.concat "; " (Ast.heap_field_names ())));
         let f x = exp_to_smt_exp x side ~indexed vctrs in
         let l', v_binds = f l in
         let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
         deref_conds := !deref_conds @
           [ EBop (Gte, l', EConst (CInt 0)); EBop (Lt, l', ha) ];
-        let hv_var = EVar (Var (set_variable_id "heap_value" side vctrs indexed)) in
-        EFunc ("select", [hv_var; l']), v_binds
-    | HDerefNext ( l ) ->
-        let f x = exp_to_smt_exp x side ~indexed vctrs in
-        let l', v_binds = f l in
-        let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs indexed)) in
-        deref_conds := !deref_conds @
-          [ EBop (Gte, l', EConst (CInt 0)); EBop (Lt, l', ha) ];
-        let hv_var = EVar (Var (set_variable_id "heap_next" side vctrs indexed)) in
+        let hv_var =
+          EVar (Var (set_variable_id (Ast.heap_array_name field) side vctrs indexed))
+        in
         EFunc ("select", [hv_var; l']), v_binds
 
-    | HeapAlloc( v, l ) ->
+    | HeapAlloc _ ->
         failwith "HeapAlloc - should not have to do this"
 
     | Exists (id, ty, body) ->
@@ -558,16 +574,15 @@ and loop_modified_in_stmt (stmt : stmt node) : string list =
   let rec base_id_exp e = match e.elt with
     | Id n -> Some n
     | Index (b, _) -> base_id_exp b
-    | HDerefValue b | HDerefNext b -> base_id_exp b
+    | HDeref (b, _) -> base_id_exp b
     | _ -> None
   in
   match stmt.elt with
   (* Heap allocation writes the lhs variable and all three heap model vars *)
   | Assn (lhs, {elt = HeapAlloc _; _}) ->
-      heap_model_vars @ Option.to_list (base_id_exp lhs)
+      (heap_model_vars ()) @ Option.to_list (base_id_exp lhs)
   (* Heap-field writes touch the relevant model array *)
-  | Assn ({elt = HDerefValue _; _}, _) -> ["heap_value"]
-  | Assn ({elt = HDerefNext  _; _}, _) -> ["heap_next"]
+  | Assn ({elt = HDeref (_, field); _}, _) -> [Ast.heap_array_name field]
   | Assn (lhs, _)  -> Option.to_list (base_id_exp lhs)
   | Decl (id, _)   -> [id]
   | Havoc e ->
@@ -577,9 +592,8 @@ and loop_modified_in_stmt (stmt : stmt node) : string list =
         | _ -> failwith "loop_modified_vars: unsupported havoc lvalue"
       in
       (match e.elt with
-       | HDerefValue _ -> ["heap_value"]
-       | HDerefNext _  -> ["heap_next"]
-       | _             -> [base_id e])
+       | HDeref (_, field) -> [Ast.heap_array_name field]
+       | _                 -> [base_id e])
   | If (_, b1, b2) ->
       loop_modified_vars b1.elt @ loop_modified_vars b2.elt
   | While (_, _, body) ->
@@ -631,32 +645,44 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           with_conds conds @@ ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
         
         (* Heap Allocation *)
-        | Assn (exp, {elt = HeapAlloc ({ elt = val_exp; loc=l1 }, { elt = loc_exp; loc=l2}) as alloce; loc = ll }) ->
+        | Assn (exp, {elt = HeapAlloc initializers; _ }) ->
             let path_smt, _ = begin match exp_to_smt_exp exp left vctrs with
                             | EVar e, b -> e, b
                             | _, _ -> failwith "left of HeapAlloc should be variable"
                             end
             in
-            (* Compile the value/next fields *)
-            let v_rtn, v_binds = exp_to_smt_exp {elt= val_exp;loc=l1} right vctrs in
-            let l_rtn, l_binds = exp_to_smt_exp {elt= loc_exp;loc=l2} right vctrs in
+            let layout = !Ast.heap_layout in
+            if List.length initializers <> List.length layout then
+              failwith
+                (Printf.sprintf
+                   "spec_generator: allocation has %d initializer(s) but the declared cell {%s} has %d"
+                   (List.length initializers)
+                   (String.concat "; " (Ast.heap_field_names ()))
+                   (List.length layout));
 
-            (* heap_alloc42 = heap_alloc41 + 1
-              heap_next42  = store heap_next41  heap_alloc41 l'
-              heap_value42 = store heap_value41 heap_alloc41 v'
-              ret = heap_alloc41
-            *)
+            (* heap_alloc42  = heap_alloc41 + 1
+               heap_<f>42    = store heap_<f>41 heap_alloc41 <init_f>   for each field
+               ret           = heap_alloc41 *)
+            let compiled =
+              List.map (fun e -> exp_to_smt_exp e right vctrs) initializers
+            in
+            let binds = List.concat_map snd compiled in
             let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
-            let heapnextv,  heapnextv'  = mk_var_pair "heap_next" right vctrs in
-            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
             let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
-            bind (v_binds @ l_binds) @@ ELet ([(path_smt, heapallocv)],
+            (* Folded right so the fields nest in declaration order. *)
+            let stores rest =
+              List.fold_right
+                (fun ((field : Ast.heap_field), (rtn, _)) acc ->
+                  let arr, arr' =
+                    mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs
+                  in
+                  ELet ([to_var arr', EFunc ("store", [arr; heapallocv; rtn])], acc))
+                (List.combine layout compiled)
+                rest
+            in
+            bind binds @@ ELet ([(path_smt, heapallocv)],
               (ELet ([to_var heapallocv', ELop (Add, [heapallocv; EConst(CInt(1))])],
-              (ELet ([to_var heapnextv' , EFunc ("store", [heapnextv;  heapallocv; l_rtn])],
-              (ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; heapallocv; v_rtn])],
-              compile_block_to_smt tl vctrs
-              ))))))
-            )
+              stores (compile_block_to_smt tl vctrs))))
 
         | Assn (exp, {elt = Call (MethodL (id, {pc=Some pc;_}), el) as calle; loc = l}) ->
           let e_rtn, e_binds = exp_to_smt_exp {elt= calle;loc=l} right vctrs  in
@@ -668,32 +694,20 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
           bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
 
-        (* Heap value field write: loc->value = val *)
-        | Assn ({elt = HDerefValue loc_exp; _}, val_exp) ->
+        (* Heap field write: loc->f = e. One case for every declared field --
+           the array it stores into is the only thing that varied between the
+           old heap_value and heap_next cases. *)
+        | Assn ({elt = HDeref (loc_exp, field); _}, val_exp) ->
           let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
           let val_smt, val_binds = exp_to_smt_exp val_exp right vctrs in
           let nested = consume_deref_conds () in
           let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
           let conds = nested @ alloc_cond loc_smt ha in
-          let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+          let arr, arr' = mk_var_pair (Ast.heap_array_name field) right vctrs in
           let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
           with_conds conds @@
             bind (loc_binds @ val_binds) @@
-            ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; val_smt])],
-              compile_block_to_smt tl vctrs)
-
-        (* Heap next field write: loc->next = next_loc *)
-        | Assn ({elt = HDerefNext loc_exp; _}, next_exp) ->
-          let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
-          let next_smt, next_binds = exp_to_smt_exp next_exp right vctrs in
-          let nested = consume_deref_conds () in
-          let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
-          let conds = nested @ alloc_cond loc_smt ha in
-          let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
-          let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
-          with_conds conds @@
-            bind (loc_binds @ next_binds) @@
-            ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; next_smt])],
+            ELet ([to_var arr', EFunc ("store", [arr; loc_smt; val_smt])],
               compile_block_to_smt tl vctrs)
 
         | Assn (path, e) ->
@@ -738,7 +752,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
 
           let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
-          let heap_version = !(Hashtbl.find vctrs (List.hd heap_model_vars)) in
+          let heap_version = !(Hashtbl.find vctrs (List.hd (heap_model_vars ()))) in
           let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
           (* Methods that update the heap - maybe needed later *)
           (*
@@ -747,7 +761,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
           predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
           terms_list := !terms_list @ t;
-          (*begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) heap_model_vars
+          (*begin if updates_heap then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) (heap_model_vars ())
           else () end;*)
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
@@ -766,29 +780,21 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | Havoc(e) ->
           let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
           (match e.elt with
-          | HDerefValue loc_exp ->
+          (* havoc loc->f: existentially quantify a fresh value for that field
+             and store it, leaving the other fields' arrays alone. The havoc
+             witness is named after the array so two fields havocked in one
+             block cannot collide. *)
+          | HDeref (loc_exp, field) ->
             let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
             let nested = consume_deref_conds () in
             let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
             let conds = nested @ alloc_cond loc_smt ha in
-            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
-            let havoc_id = "heap_value_havoc_val" in
+            let arr, arr' = mk_var_pair (Ast.heap_array_name field) right vctrs in
+            let havoc_id = Ast.heap_array_name field ^ "_havoc_val" in
             with_conds conds @@
               bind loc_binds @@
               EExists ([(Var havoc_id, Smt.TInt)],
-                ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; EVar (Var havoc_id)])],
-                  compile_block_to_smt tl vctrs))
-          | HDerefNext loc_exp ->
-            let loc_smt, loc_binds = exp_to_smt_exp loc_exp right vctrs in
-            let nested = consume_deref_conds () in
-            let ha = EVar (Var (set_variable_id "heap_alloc" right vctrs true)) in
-            let conds = nested @ alloc_cond loc_smt ha in
-            let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
-            let havoc_id = "heap_next_havoc_val" in
-            with_conds conds @@
-              bind loc_binds @@
-              EExists ([(Var havoc_id, Smt.TInt)],
-                ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; EVar (Var havoc_id)])],
+                ELet ([to_var arr', EFunc ("store", [arr; loc_smt; EVar (Var havoc_id)])],
                   compile_block_to_smt tl vctrs))
           | Index (_, idx_exp) ->
             (* havoc arr[i]: existentially quantify a fresh element and store it,
@@ -843,7 +849,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
                 match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
                 | Some ((_, ty), _) -> sty_of_ty ty
                 | None ->
-                    if List.mem id heap_model_vars
+                    if List.mem id (heap_model_vars ())
                     then Smt.TArray (Smt.TInt, Smt.TInt)
                     else Smt.TInt
               in
@@ -870,7 +876,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
                    the post-loop state of all variables the body can modify. *)
                 Hashtbl.mem vctrs id
                 || List.exists (fun ((vid,_),_) -> String.equal vid id) !gstates
-                || List.mem id heap_model_vars)
+                || List.mem id (heap_model_vars ()))
           in
           (* Bump version counter for each modified variable (side-effects vctrs). *)
           let havoc_triples = List.map (fun id ->
@@ -884,7 +890,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
               match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
               | Some ((_, ty), _) -> sty_of_ty ty
               | None ->
-                  if List.mem id heap_model_vars
+                  if List.mem id (heap_model_vars ())
                   then Smt.TArray (Smt.TInt, Smt.TInt)
                   else Smt.TInt
             in
@@ -930,7 +936,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           if not (Hashtbl.mem variable_ctr_list id) then
           Hashtbl.add variable_ctr_list id (ref 1) else
           Hashtbl.replace variable_ctr_list id (ref 1) (* TODO: Don't need to set existing member to 1 in else case? *)
-  ) heap_model_vars;
+  ) (heap_model_vars ());
   let res = compile_block_to_smt b local_variable_ctr_list in
   if (List.length !ety_init_list == 0) then
     res, local_variable_ctr_list
@@ -950,7 +956,7 @@ let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
       if !use_heap then []
       else List.map (fun id ->
         Smt.EBop (Eq, EVar (VarPost id), EVar (Var id))
-      ) heap_model_vars
+      ) (heap_model_vars ())
     in
     ELop (And, block_to_exp :: !remain_variables @ heap_passthrough @ [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
 
@@ -994,24 +1000,38 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
       EBop (Gte, EVar (Var v), EConst (CInt 0));
       EBop (Lt, EVar (Var v), EVar (Var "heap_alloc"))
     ]) loc_varnames in
-    (* Each loc var's next pointer is either null (-1) or a valid heap address.
+    (* Each loc var's POINTER FIELDS are either null (-1) or a valid heap
+       address. This applies to every field the cell declares as tloc, not just
+       one called "next": a doubly-linked cell has two, and a cell may have
+       none at all, in which case there is nothing to constrain. Reading the
+       field set off the declared types is also what keeps this from naming a
+       heap_next array that a program without a "next" field never declares.
+
        This is weaker than the original closed-world constraint (which required
-       heap_next to point only to tracked TLoc variables), allowing next pointers
+       the pointer to address only tracked TLoc variables), allowing pointers
        to address heap cells that are not currently tracked as named TLoc vars.
        Safe as long as blocks in the commute check do not write fresh allocation
-       addresses into heap_next: in that case the states_equal bijection handles
-       untracked next values via its else branch (raw equality), which holds when
-       both orderings leave those heap_next entries unmodified. *)
-    let heap_next_valid = List.map (fun v ->
-      let sel = EFunc ("select", [EVar (Var "heap_next"); EVar (Var v)]) in
-      ELop (Or, [
-        EBop (Eq, sel, smt_negone ());
-        ELop (And, [
-          EBop (Gte, sel, EConst (CInt 0));
-          EBop (Lt,  sel, EVar (Var "heap_alloc"))
-        ])
-      ])
-    ) loc_varnames in
+       addresses into those arrays: in that case the states_equal bijection
+       handles untracked values via its else branch (raw equality), which holds
+       when both orderings leave those entries unmodified. *)
+    let loc_fields =
+      List.filter (fun (f : Ast.heap_field) -> f.hf_type = TLoc) !Ast.heap_layout
+    in
+    let heap_next_valid =
+      List.concat_map (fun (field : Ast.heap_field) ->
+        let arr = Ast.heap_array_name field.hf_name in
+        List.map (fun v ->
+          let sel = EFunc ("select", [EVar (Var arr); EVar (Var v)]) in
+          ELop (Or, [
+            EBop (Eq, sel, smt_negone ());
+            ELop (And, [
+              EBop (Gte, sel, EConst (CInt 0));
+              EBop (Lt,  sel, EVar (Var "heap_alloc"))
+            ])
+          ])
+        ) loc_varnames)
+        loc_fields
+    in
     let method_spec = { name = m.mname; args = args; ret = ret;
                         pre = ELop (And, ([!pre; heap_inv] @ loc_valid @ heap_next_valid));
                         post = post; terms = terms} in
@@ -1137,7 +1157,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
         Hashtbl.add variable_ctr_list id (ref 1)
       else
         Hashtbl.replace variable_ctr_list id (ref 1)
-    ) heap_model_vars;
+    ) (heap_model_vars ());
     extra_vars := !extra_vars @ [
       (("heap_alloc_1", TInt),      ETInt  "heap_alloc_1");
       (("heap_value_1", TArr TInt), ETArr ("heap_value_1", Smt.TInt));
@@ -1163,42 +1183,41 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
           go tl vctrs (fun k -> wrap (EBop (Imp, e_smt, k)))
 
       (* ── Heap allocation ─────────────────────────────────────────── *)
-      | Assn (exp, {elt = HeapAlloc ({elt = val_exp; loc=l1}, {elt = loc_exp; loc=l2}); _}) ->
+      | Assn (exp, {elt = HeapAlloc initializers; _}) ->
           begin try
             let path_v = match etse exp left vctrs with EVar v, _ -> v | _ -> failwith "lhs" in
-            let v_smt, v_binds = etse {elt=val_exp; loc=l1} right vctrs in
-            let l_smt, l_binds = etse {elt=loc_exp; loc=l2} right vctrs in
+            let layout = !Ast.heap_layout in
+            if List.length initializers <> List.length layout then
+              failwith "HeapAlloc arity does not match the declared cell";
+            let compiled = List.map (fun e -> etse e right vctrs) initializers in
+            let binds = List.concat_map snd compiled in
             let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
-            let heapnextv,  heapnextv'  = mk_var_pair "heap_next"  right vctrs in
-            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            let stores k =
+              List.fold_right
+                (fun ((field : Ast.heap_field), (smt, _)) acc ->
+                  let arr, arr' =
+                    mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs
+                  in
+                  ELet ([to_var arr', EFunc("store", [arr; heapallocv; smt])], acc))
+                (List.combine layout compiled)
+                k
+            in
             go tl vctrs (fun k ->
-              wrap (bind (v_binds @ l_binds) @@
+              wrap (bind binds @@
                 ELet ([(path_v, heapallocv)],
                   ELet ([to_var heapallocv', ELop(Add, [heapallocv; EConst(CInt 1)])],
-                    ELet ([to_var heapnextv',  EFunc("store", [heapnextv;  heapallocv; l_smt])],
-                      ELet ([to_var heapvaluev', EFunc("store", [heapvaluev; heapallocv; v_smt])],
-                        k))))))
+                    stores k))))
           with _ -> go tl vctrs wrap end
 
       (* ── Heap field writes ───────────────────────────────────────── *)
-      | Assn ({elt = HDerefValue loc_exp; _}, val_exp) ->
+      | Assn ({elt = HDeref (loc_exp, field); _}, val_exp) ->
           begin try
             let loc_smt, loc_binds = etse loc_exp right vctrs in
             let val_smt, val_binds = etse val_exp right vctrs in
-            let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
+            let arr, arr' = mk_var_pair (Ast.heap_array_name field) right vctrs in
             go tl vctrs (fun k ->
               wrap (bind (loc_binds @ val_binds) @@
-                ELet ([to_var heapvaluev', EFunc ("store", [heapvaluev; loc_smt; val_smt])], k)))
-          with _ -> go tl vctrs wrap end
-
-      | Assn ({elt = HDerefNext loc_exp; _}, next_exp) ->
-          begin try
-            let loc_smt, loc_binds = etse loc_exp right vctrs in
-            let next_smt, next_binds = etse next_exp right vctrs in
-            let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
-            go tl vctrs (fun k ->
-              wrap (bind (loc_binds @ next_binds) @@
-                ELet ([to_var heapnextv', EFunc ("store", [heapnextv; loc_smt; next_smt])], k)))
+                ELet ([to_var arr', EFunc ("store", [arr; loc_smt; val_smt])], k)))
           with _ -> go tl vctrs wrap end
 
       (* ── Array write ─────────────────────────────────────────────── *)
@@ -1251,27 +1270,16 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
       (* ── Havoc ───────────────────────────────────────────────────── *)
       | Havoc e ->
           begin match e.elt with
-          | HDerefValue loc_exp ->
+          | HDeref (loc_exp, field) ->
             begin try
               let loc_smt, loc_binds = etse loc_exp right vctrs in
-              let heapvaluev, heapvaluev' = mk_var_pair "heap_value" right vctrs in
-              let hvid = "heap_value_havoc_val" in
+              let arr, arr' = mk_var_pair (Ast.heap_array_name field) right vctrs in
+              let hvid = Ast.heap_array_name field ^ "_havoc_val" in
               go tl vctrs (fun k ->
                 wrap (bind loc_binds @@
                   EExists ([(Var hvid, Smt.TInt)],
-                    ELet ([to_var heapvaluev',
-                           EFunc ("store", [heapvaluev; loc_smt; EVar (Var hvid)])], k))))
-            with _ -> go tl vctrs wrap end
-          | HDerefNext loc_exp ->
-            begin try
-              let loc_smt, loc_binds = etse loc_exp right vctrs in
-              let heapnextv, heapnextv' = mk_var_pair "heap_next" right vctrs in
-              let hvid = "heap_next_havoc_val" in
-              go tl vctrs (fun k ->
-                wrap (bind loc_binds @@
-                  EExists ([(Var hvid, Smt.TInt)],
-                    ELet ([to_var heapnextv',
-                           EFunc ("store", [heapnextv; loc_smt; EVar (Var hvid)])], k))))
+                    ELet ([to_var arr',
+                           EFunc ("store", [arr; loc_smt; EVar (Var hvid)])], k))))
             with _ -> go tl vctrs wrap end
           | Index (_, idx_exp) ->
             begin try
@@ -1346,14 +1354,14 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               |> List.filter (fun id ->
                   Hashtbl.mem vctrs id
                   || List.exists (fun ((vid,_),_) -> String.equal vid id) !gstates
-                  || List.mem id heap_model_vars)
+                  || List.mem id (heap_model_vars ()))
             in
             let havoc_triples = List.filter_map (fun id ->
               let hv = id ^ "_loop_havoc_vc" in
               let sty = match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
                 | Some ((_, ty), _) -> sty_of_ty ty
                 | None ->
-                    if List.mem id heap_model_vars
+                    if List.mem id (heap_model_vars ())
                     then Smt.TArray (Smt.TInt, Smt.TInt)
                     else Smt.TInt in
               (match fst @@ etse (no_loc (Id id)) left vctrs with

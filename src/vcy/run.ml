@@ -503,7 +503,7 @@ module RunInfer : Runner = struct
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
-      let prog' = gmdecls @ List.filter (function Gvdecl _ | Gsdecl _ -> true | Gmdecl _ -> false) prog in
+      let prog' = gmdecls @ List.filter (function Gvdecl _ | Gsdecl _ | Gcelldecl _ -> true | Gmdecl _ -> false) prog in
       let translated_prog = Ast_print.AstPP.string_of_prog prog' in
       let out_chan = open_out !output_file in
       output_string out_chan translated_prog;

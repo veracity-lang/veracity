@@ -32,6 +32,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
 %token TLOC        /* loc */
+%token CELL     /* cell { .. } heap layout */
 %token THEAP_VALUE /* heap_value */
 %token RETURN   /* return */
 %token SEMI     /* ; */
@@ -142,6 +143,8 @@ prog:
   | p=list(decl) EOF  { p }
 
 decl:
+  | CELL LBRACE fields=list(cell_field) RBRACE
+    { Ast.heap_layout := fields; Gcelldecl fields }
   | ty=ty name=IDENT EQ init=exp(*gexp*) SEMI
     { Gvdecl (loc $startpos $endpos { name; ty; init }) }
   | ty=ty name=UIDENT EQ init=exp(*gexp*) SEMI
@@ -178,7 +181,10 @@ ty:
   | HASHTABLE LBRACKET tyk=ty COMMA tyv=ty RBRACKET { THashTable (tyk,tyv) }
   | id=UIDENT { TStruct id }
   | TLOC { TLoc }
-  | THEAP_VALUE LBRACKET tyi=ty COMMA tyl=ty RBRACKET { THeapValue (tyi, tyl) }
+  | THEAP_VALUE LBRACKET tys=separated_nonempty_list(COMMA, ty) RBRACKET { THeapValue tys }
+
+cell_field:
+  | hf_type=ty hf_name=IDENT SEMI { { Ast.hf_name; hf_type } }
 
 %inline bop:
   | STAR {Mul}
@@ -214,11 +220,7 @@ lhs:
   | e=basic_exp LBRACKET i=basic_exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj (e, id) }
-  | l=basic_exp ARROW id=IDENT {
-        match id with
-        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
-        | "value" -> loc $startpos $endpos @@ HDerefValue l
-        | _       -> failwith (Printf.sprintf "lhs: unknown heap field '%s'" id) }
+  | l=basic_exp ARROW id=IDENT { loc $startpos $endpos @@ HDeref (l, id) }
 
 exp:
   | be=basic_exp        { be }
@@ -240,11 +242,7 @@ basic_exp:
                         { loc $startpos $endpos @@ CallRaw (e,es) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj(e, id) }
   | LPAREN e=exp RPAREN { e }
-  | l=basic_exp ARROW id=IDENT {
-        match id with
-        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
-        | "value" -> loc $startpos $endpos @@ HDerefValue l
-        | _       -> failwith (Printf.sprintf "basic_exp: unknown heap field '%s'" id) }
+  | l=basic_exp ARROW id=IDENT { loc $startpos $endpos @@ HDeref (l, id) }
   | EXISTS id=IDENT DOT body=basic_exp
       %prec DARROW
       { loc $startpos $endpos @@ Exists(id, TInt, body) }
@@ -269,7 +267,9 @@ atomic_expr:
 
 new_data:
   | NEW LBRACE e1=basic_exp LRBRACE e2=basic_exp RBRACE
-       { loc $startpos $endpos @@ HeapAlloc(e1,e2) }
+       { loc $startpos $endpos @@ HeapAlloc [ e1; e2 ] }
+  | NEW LBRACE es=separated_nonempty_list(COMMA, basic_exp) RBRACE
+       { loc $startpos $endpos @@ HeapAlloc es }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         {loc $startpos $endpos @@ CArr(t, es)}
   | NEW t=ty LBRACKET e=basic_exp RBRACKET {loc $startpos $endpos @@ NewArr(t,e)}

@@ -500,8 +500,12 @@ let lib_io : method_library =
     }
   ]
 
-let heap_debug = false 
-let heap_store : (int64, int64 * int64 option) Hashtbl.t = Hashtbl.create 16
+let heap_debug = false
+
+(* A cell's runtime contents, one entry per declared field in declaration
+   order (see [Ast.heap_layout]). An int field holds [VInt], a tloc field
+   [VLoc]; the list length is [Ast.heap_arity ()]. *)
+let heap_store : (int64, value list) Hashtbl.t = Hashtbl.create 16
 let heap_next_loc : int64 ref = ref 0L
 let heap_next_gen () : int64 = 
   let rv = !heap_next_loc in
@@ -510,28 +514,37 @@ let heap_next_gen () : int64 =
 let heap_next_gen32 () : int = 
   Int64.to_int (heap_next_gen())
 
-let heap_set (l:int64) (v:int64) (l':int64 option) : unit = 
-  match l' with 
-  | Some(i) ->
-      if heap_debug then Printf.printf "HEAP WRITE: %d -> (%d, %s)\n" (Int64.to_int l) (Int64.to_int v) (Int64.to_string i);
-      Hashtbl.replace heap_store l (v, Some(i))
-  | None ->
-      if heap_debug then Printf.printf "HEAP WRITE: %d -> (%d, NULL)\n" (Int64.to_int l) (Int64.to_int v);
-      Hashtbl.replace heap_store l (v, None)
+(* Write a whole cell. *)
+let heap_set_cell (l:int64) (vs : value list) : unit =
+  if heap_debug then
+    Printf.printf "HEAP WRITE: %d -> (%d field(s))\n" (Int64.to_int l) (List.length vs);
+  Hashtbl.replace heap_store l vs
 
-let heap_get (l:int64) : (int64 * int64 option) = 
-  try 
-    let (v,l') = Hashtbl.find heap_store l in 
-      if heap_debug then Printf.printf "HEAP READ loc %d has value (%d,%s)\n" (Int64.to_int l) (Int64.to_int v)
-        (match l' with | Some(ii) -> (Int64.to_string ii) | _ -> "null");
-      (v,l')
-    with Not_found -> failwith "Vcylib.heap_get"
+let heap_get (l:int64) : value list =
+  try Hashtbl.find heap_store l
+  with Not_found -> failwith "Vcylib.heap_get"
 
-let heap_get_value (l:int64) : int64 = 
-  (fst (heap_get l))
+(* Read one field by name. The layout is what turns a name into a position, so
+   a field the program never declared is an error here rather than an
+   out-of-range read. *)
+let heap_get_field (l:int64) (field:id) : value =
+  match Ast.heap_field_index field with
+  | None -> failwith (Printf.sprintf "Vcylib.heap_get_field: undeclared field ->%s" field)
+  | Some i ->
+      let vs = heap_get l in
+      (match List.nth_opt vs i with
+       | Some v -> v
+       | None ->
+           failwith
+             (Printf.sprintf "Vcylib.heap_get_field: cell at %s has %d field(s), wanted index %d"
+                (Int64.to_string l) (List.length vs) i))
 
-let heap_get_next (l:int64) : (int64 option) = 
-  (snd (heap_get l))
+let heap_set_field (l:int64) (field:id) (v:value) : unit =
+  match Ast.heap_field_index field with
+  | None -> failwith (Printf.sprintf "Vcylib.heap_set_field: undeclared field ->%s" field)
+  | Some i ->
+      let vs = heap_get l in
+      heap_set_cell l (List.mapi (fun j old -> if j = i then v else old) vs)
 
 
 
@@ -548,8 +561,8 @@ let lib_heap : method_library =
   ; "heap_write",
     { pure = false
     ; func = begin function
-      | env, [VLoc Some(loc); VHeapValue (n, next)] ->
-        Hashtbl.replace heap_store loc (n, next);
+      | env, [VLoc Some(loc); VHeapValue vs] ->
+        Hashtbl.replace heap_store loc vs;
         env, VVoid
       | _ -> raise @@ TypeFailure ("heap_write arguments", Range.norange)
       end
@@ -562,7 +575,7 @@ let lib_heap : method_library =
         begin match Hashtbl.find_opt heap_store loc with
         | None ->
           raise @@ ValueFailure ("heap_read_next: unallocated location " ^ Int64.to_string loc, Range.norange)
-        | Some (n, next) -> env, VHeapValue (n, next)
+        | Some vs -> env, VHeapValue vs
         end
       | _ -> raise @@ TypeFailure ("heap_read_next arguments", Range.norange)
       end

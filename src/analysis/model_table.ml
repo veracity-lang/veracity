@@ -68,9 +68,10 @@ let final_rev = "21"
 let rec exps_of_exp (e : exp node) : exp node list =
   let sub =
     match e.elt with
-    | Index (a, b) | Bop (_, a, b) | HeapAlloc (a, b) | HeapValue (a, b) ->
+    | Index (a, b) | Bop (_, a, b) ->
       exps_of_exp a @ exps_of_exp b
-    | Uop (_, a) | Proj (a, _) | HDerefValue a | HDerefNext a -> exps_of_exp a
+    | HeapAlloc es | HeapValue es -> List.concat_map exps_of_exp es
+    | Uop (_, a) | Proj (a, _) | HDeref (a, _) -> exps_of_exp a
     | Ternary (a, b, c) -> exps_of_exp a @ exps_of_exp b @ exps_of_exp c
     | CArr (_, es) -> List.concat_map exps_of_exp es
     | _ -> []

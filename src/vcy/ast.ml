@@ -59,7 +59,11 @@ type ty =
 | TChanR | TChanW
 | TStruct of id
 | TLoc
-| THeapValue of ty * ty
+| THeapValue of ty list
+
+(* One field of a heap cell. See [heap_layout] below for the layout itself;
+   this has to be declared up here because [decl] mentions it. *)
+and heap_field = { hf_name : id; hf_type : ty }
 
 
 let rec sty_of_ty = function
@@ -102,10 +106,12 @@ type exp =
 | Ternary of exp node * exp node * exp node
 | CStruct of id * exp node bindlist
 | Proj of exp node * id
-| HeapAlloc of exp node * exp node
-| HeapValue of exp node * exp node
-| HDerefValue of exp node
-| HDerefNext of exp node
+| HeapAlloc of exp node list
+| HeapValue of exp node list
+(* A dereference names the field it reads. The field set is per-program data
+   (see [heap_layout] below), not a fixed pair, so this carries the name rather
+   than splitting into one constructor per field. *)
+| HDeref of exp node * id
 | Exists of id * ty * exp node
 | Forall of id * ty * exp node
 
@@ -208,7 +214,7 @@ and value =
   | VChanW  of string * out_channel
   | VStruct of id * value ref bindlist
   | VLoc       of int64 option
-  | VHeapValue of int64 * int64 option
+  | VHeapValue of value list
 
 and hashtable = ty * ty * ht_variant
 
@@ -298,6 +304,7 @@ type decl =
 | Gvdecl of gdecl node (* Global variable *)
 | Gmdecl of mdecl node (* Method *)
 | Gsdecl of sdecl node (* Struct *)
+| Gcelldecl of heap_field list (* Heap-cell layout *)
 
 type prog = decl list
 
@@ -318,7 +325,7 @@ exception AssertFailure of Range.t
 
 let initial_hashtable_size = 16
 
-let type_of_value : value -> ty =
+let rec type_of_value : value -> ty =
   function
   | VNull ty -> ty
   | VVoid    -> TVoid
@@ -331,7 +338,51 @@ let type_of_value : value -> ty =
   | VStruct (id,_) -> TStruct id
   | VHashTable (tyk, tyv, _) -> THashTable (tyk, tyv)
   | VLoc _             -> TLoc
-  | VHeapValue _       -> THeapValue (TInt, TLoc)
+  | VHeapValue vs      -> THeapValue (List.map type_of_value vs)
+
+(* ── Heap-cell layout ────────────────────────────────────────────────────
+ *
+ * A heap cell is a record of named, typed fields. The layout is per-program:
+ * a .vcy may declare one, and a program that does not gets [default_heap_layout],
+ * {int value; tloc next}, which is what every .vcy written before cells were
+ * declarable assumes.
+ *
+ * It is a mutable global for the same reason [Spec_generator.gstates] is: the
+ * layout is fixed once per program and read from deep inside the interpreter,
+ * the VC generator and the SMT lowering, none of which thread a context.
+ *
+ * Field ORDER is load-bearing. It is the order of a [HeapAlloc]'s arguments,
+ * the index into a cell's runtime contents in [Vcylib.heap_store], and the
+ * order the per-field SMT arrays are declared in. *)
+let default_heap_layout : heap_field list =
+  [ { hf_name = "value"; hf_type = TInt }; { hf_name = "next"; hf_type = TLoc } ]
+
+let heap_layout : heap_field list ref = ref default_heap_layout
+
+let heap_field_names () = List.map (fun f -> f.hf_name) !heap_layout
+let heap_arity () = List.length !heap_layout
+
+let heap_field_index (name : id) : int option =
+  let rec go i = function
+    | [] -> None
+    | f :: rest -> if f.hf_name = name then Some i else go (i + 1) rest
+  in
+  go 0 !heap_layout
+
+let heap_field_type (name : id) : ty option =
+  match List.find_opt (fun f -> f.hf_name = name) !heap_layout with
+  | Some f -> Some f.hf_type
+  | None -> None
+
+(* The SMT array holding one field across all locations. Servois2 and the
+   counterexample renderer agree on this spelling, so it lives here rather than
+   being re-derived at each site. *)
+let heap_array_name (name : id) : string = "heap_" ^ name
+
+let heap_array_names () = List.map heap_array_name (heap_field_names ())
+
+(* Every heap-model variable in the SMT state, allocation counter included. *)
+let heap_model_var_names () = "heap_alloc" :: heap_array_names ()
 
 (* Is a type passed by reference (sort of)? 
  * Technically everything is passed by value.
@@ -359,8 +410,8 @@ let rec ty_eq (env : env) ty1 ty2 =
   | TStruct id1, TStruct id2 ->
     id1 = id2
   | TLoc, TLoc -> true
-  | THeapValue (t1a, t1b), THeapValue (t2a, t2b) ->
-    ty_eq env t1a t2a && ty_eq env t1b t2b
+  | THeapValue ts1, THeapValue ts2 ->
+    List.length ts1 = List.length ts2 && List.for_all2 (ty_eq env) ts1 ts2
   | _ -> false
 
 let ty_match env v ty =
@@ -378,7 +429,7 @@ let ty_default_value (env : env) : ty -> value =
   | TStruct id -> VNull (TStruct id)
   | THashTable (tyk, tyv) -> VNull (THashTable (tyk, tyv))
   | TLoc -> VNull TLoc
-  | THeapValue (tyi, tyl) -> VNull (THeapValue (tyi, tyl))
+  | THeapValue ts -> VNull (THeapValue ts)
 
 let value_of_htdata : value Hashtables.htdata -> value =
   function
