@@ -1,15 +1,13 @@
 (include_subdirs no)
 
 (test
-    (name test)
-    (libraries ounit2 vcy)
-    (modules test)
-    (action (setenv LD_LIBRARY_PATH .. (run %{test})))
-)
-
-(test
     (name api_test)
     (libraries ounit2 vcy)
     (modules api_test)
+    ; The file-based cases read .vcy programs from benchmarks/. Dune sandboxes
+    ; a test to its own build directory, so without this the files are simply
+    ; not there and those cases fail on a missing path rather than on anything
+    ; they mean to check.
+    (deps (source_tree ../../benchmarks))
     (action (setenv LD_LIBRARY_PATH .. (run %{test})))
 )

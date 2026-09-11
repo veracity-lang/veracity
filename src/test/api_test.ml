@@ -1,9 +1,10 @@
 open OUnit2
 open Vcy
 
-(* Path helpers — tests run from the dune build directory, so we need to
-   reach the repo root. *)
-let bench path = "../" ^ path
+(* Path helpers. A test runs with its build directory as the working
+   directory -- .../src/test -- so the repo root is two levels up, and
+   benchmarks/ has to be declared as a dep in dune to be there at all. *)
+let bench path = "../../" ^ path
 
 (* ------------------------------------------------------------------ helpers *)
 
