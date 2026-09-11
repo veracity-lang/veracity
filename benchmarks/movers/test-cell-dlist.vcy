@@ -1,0 +1,53 @@
+/*
+ * ./vcy infer ../benchmarks/movers/test-cell-dlist.vcy --prover cvc5 -ae
+ *
+ * A four-field cell with TWO tloc fields. The declared type of a field is what
+ * decides how it is treated: a tloc field is renamed by the bijection when the
+ * two execution orders are compared, and carries the precondition that it is
+ * null or a valid heap address. Both ->prev and ->next must get that, not just
+ * whichever one happens to be called "next".
+ */
+cell {
+  int value;
+  int lock;
+  tloc prev;
+  tloc next;
+}
+
+int main(int argc, string[] argv) {
+    tloc a = new { 0, 0, null, null };
+    tloc b = new { 0, 0, null, null };
+    tloc c = new { 0, 0, null, null };
+    tloc t = null;
+
+    /* the two pointer fields are independent arrays */
+    commute _ {
+        { a->next = b; }
+        { a->prev = c; }
+    }
+
+    /* the forward and backward halves of a splice, on different nodes */
+    commute _ {
+        { b->next = c; }
+        { a->prev = c; }
+    }
+
+    /* following a back pointer commutes with an unrelated forward write */
+    commute _ {
+        { t = a->prev; }
+        { b->next = c; }
+    }
+
+    /* write-then-read of the same pointer field: right mover, not left */
+    commute_right _ {
+        { a->prev = c; }
+        { t = a->prev; }
+    }
+
+    commute_left _ { /* false */
+        { a->prev = c; }
+        { t = a->prev; }
+    }
+
+    return 0;
+}

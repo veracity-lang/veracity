@@ -1,0 +1,51 @@
+/*
+ * ./vcy infer ../benchmarks/movers/test-cell-lock.vcy --prover cvc5 -ae
+ *
+ * A three-field cell. Each declared field gets its own SMT array, so two
+ * fields of the SAME node are as independent as two different nodes -- which
+ * is the property a fixed {value, next} cell had no way to state.
+ */
+cell {
+  int value;
+  int lock;
+  tloc next;
+}
+
+int main(int argc, string[] argv) {
+    tloc a = new { 0, 0, null };
+    tloc b = new { 0, 0, null };
+    int x = 0;
+
+    /* different nodes, same field */
+    commute _ {
+        { a->lock = 1; }
+        { b->lock = 1; }
+    }
+
+    /* same node, different fields: heap_lock and heap_value are separate
+       arrays, so neither write can be seen by the other */
+    commute _ {
+        { a->lock = 1; }
+        { a->value = 2; }
+    }
+
+    /* a lock write does not disturb the list shape */
+    commute _ {
+        { a->lock = 1; }
+        { b->next = a; }
+    }
+
+    /* reading a field commutes with writing a different one on the same node */
+    commute _ {
+        { x = a->value; }
+        { a->lock = 1; }
+    }
+
+    /* write-then-read of the SAME field is a right mover but not a left one */
+    commute_right _ {
+        { a->lock = 1; }
+        { x = a->lock; }
+    }
+
+    return 0;
+}
