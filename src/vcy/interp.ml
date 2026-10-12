@@ -894,13 +894,17 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
                 end
               end
             | None, _ ->
+              (* The solver answered unknown. That is not a proof, so fail
+                 rather than fall through as if the condition held. The
+                 message says "unknown" so a caller can retry with another
+                 prover (ConQuoer's Z3 fallback keys on it). *)
+              let msg = Printf.sprintf "Condition at %s unable to verify (solver returned unknown): %s"
+                (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
               if not !silent then begin
-                if not !emit_quiet then
-                  Printf.printf "Condition at %s unable to verify: %s\n"
-                    (Range.string_of_range h.loc)
-                    (AstPP.string_of_exp e)
+                if not !emit_quiet then Printf.printf "%s\n" msg
                 else print_string "failure\n"
-              end)
+              end;
+              raise @@ CommuteFailure (msg, h.loc))
       | PhiInf -> () end;
     let s = Commute (var, phi, bl, pre, post) in
     node_app
