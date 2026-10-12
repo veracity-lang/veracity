@@ -983,6 +983,53 @@ let generate_spec_pre_post_condition pre post =
   | None, Some post -> (Smt.EConst (CBool true)), compile_post post
   | Some pre, None -> compile_pre pre, (Smt.EConst (CBool true))
 
+(* Heap well-formedness over the current [gstates]: heap_alloc is
+   non-negative, every TLoc state variable addresses an allocated cell, and each
+   of that cell's pointer fields is null or allocated. It is every method's
+   precondition; it also holds in every reachable state, which is what lets
+   [Analyze] assume it of the post-m1;m2 state in a mover check. *)
+let heap_wellformed () : sexp list =
+  let heap_inv = EBop (Gte, EVar (Var "heap_alloc"), EConst (CInt 0)) in
+  let loc_varnames = List.filter_map (fun ((id, ty), _) -> if ty = TLoc then Some id else None) !gstates in
+  (* Each loc var address is a valid allocated cell: 0 <= v < heap_alloc *)
+  let loc_valid = List.concat_map (fun v -> [
+    EBop (Gte, EVar (Var v), EConst (CInt 0));
+    EBop (Lt, EVar (Var v), EVar (Var "heap_alloc"))
+  ]) loc_varnames in
+  (* Each loc var's POINTER FIELDS are either null (-1) or a valid heap
+     address. This applies to every field the cell declares as tloc, not just
+     one called "next": a doubly-linked cell has two, and a cell may have
+     none at all, in which case there is nothing to constrain. Reading the
+     field set off the declared types is also what keeps this from naming a
+     heap_next array that a program without a "next" field never declares.
+
+     This is weaker than the original closed-world constraint (which required
+     the pointer to address only tracked TLoc variables), allowing pointers
+     to address heap cells that are not currently tracked as named TLoc vars.
+     Safe as long as blocks in the commute check do not write fresh allocation
+     addresses into those arrays: in that case the states_equal bijection
+     handles untracked values via its else branch (raw equality), which holds
+     when both orderings leave those entries unmodified. *)
+  let loc_fields =
+    List.filter (fun (f : Ast.heap_field) -> f.hf_type = TLoc) !Ast.heap_layout
+  in
+  let heap_next_valid =
+    List.concat_map (fun (field : Ast.heap_field) ->
+      let arr = Ast.heap_array_name field.hf_name in
+      List.map (fun v ->
+        let sel = EFunc ("select", [EVar (Var arr); EVar (Var v)]) in
+        ELop (Or, [
+          EBop (Eq, sel, smt_negone ());
+          ELop (And, [
+            EBop (Gte, sel, EConst (CInt 0));
+            EBop (Lt,  sel, EVar (Var "heap_alloc"))
+          ])
+        ])
+      ) loc_varnames)
+      loc_fields
+  in
+  heap_inv :: loc_valid @ heap_next_valid
+
 let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let args = List.map (fun (ty,id) -> (Smt.Var id, sty_of_ty ty)) m.args in
     let updated_return_type = 
@@ -992,55 +1039,16 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     in
     let ret = [(Smt.Var "result", updated_return_type)] in 
     let post = generate_method_spec_postcondition genv m.body.elt in
-    let terms = compile_block_to_term_list m.body.elt in 
-    let heap_inv = EBop (Gte, EVar (Var "heap_alloc"), EConst (CInt 0)) in
-    let loc_varnames = List.filter_map (fun ((id, ty), _) -> if ty = TLoc then Some id else None) !gstates in
-    (* Each loc var address is a valid allocated cell: 0 <= v < heap_alloc *)
-    let loc_valid = List.concat_map (fun v -> [
-      EBop (Gte, EVar (Var v), EConst (CInt 0));
-      EBop (Lt, EVar (Var v), EVar (Var "heap_alloc"))
-    ]) loc_varnames in
-    (* Each loc var's POINTER FIELDS are either null (-1) or a valid heap
-       address. This applies to every field the cell declares as tloc, not just
-       one called "next": a doubly-linked cell has two, and a cell may have
-       none at all, in which case there is nothing to constrain. Reading the
-       field set off the declared types is also what keeps this from naming a
-       heap_next array that a program without a "next" field never declares.
-
-       This is weaker than the original closed-world constraint (which required
-       the pointer to address only tracked TLoc variables), allowing pointers
-       to address heap cells that are not currently tracked as named TLoc vars.
-       Safe as long as blocks in the commute check do not write fresh allocation
-       addresses into those arrays: in that case the states_equal bijection
-       handles untracked values via its else branch (raw equality), which holds
-       when both orderings leave those entries unmodified. *)
-    let loc_fields =
-      List.filter (fun (f : Ast.heap_field) -> f.hf_type = TLoc) !Ast.heap_layout
-    in
-    let heap_next_valid =
-      List.concat_map (fun (field : Ast.heap_field) ->
-        let arr = Ast.heap_array_name field.hf_name in
-        List.map (fun v ->
-          let sel = EFunc ("select", [EVar (Var arr); EVar (Var v)]) in
-          ELop (Or, [
-            EBop (Eq, sel, smt_negone ());
-            ELop (And, [
-              EBop (Gte, sel, EConst (CInt 0));
-              EBop (Lt,  sel, EVar (Var "heap_alloc"))
-            ])
-          ])
-        ) loc_varnames)
-        loc_fields
-    in
+    let terms = compile_block_to_term_list m.body.elt in
     let method_spec = { name = m.mname; args = args; ret = ret;
-                        pre = ELop (And, ([!pre; heap_inv] @ loc_valid @ heap_next_valid));
+                        pre = ELop (And, (!pre :: heap_wellformed ()));
                         post = post; terms = terms} in
 
     terms_list := [];
     Hashtbl.iter (fun id -> fun _ -> (* keep the local variables that defined in last block *)
                     if (List.exists (fun ((name,_),_) -> String.equal id name) !gstates) then
                     Hashtbl.remove variable_ctr_list id
-                    else 
+                    else
                     Hashtbl.replace variable_ctr_list id (ref 0)
     ) variable_ctr_list;
 
@@ -1158,11 +1166,14 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
       else
         Hashtbl.replace variable_ctr_list id (ref 1)
     ) (heap_model_vars ());
-    extra_vars := !extra_vars @ [
-      (("heap_alloc_1", TInt),      ETInt  "heap_alloc_1");
-      (("heap_value_1", TArr TInt), ETArr ("heap_value_1", Smt.TInt));
-      (("heap_next_1",  TArr TInt), ETArr ("heap_next_1",  Smt.TInt));
-    ];
+    (* One array per declared cell field, not a hardcoded value/next pair:
+       a program with its own cell would otherwise reference undeclared
+       heap_<field>_1 arrays and every assert VC would fail to parse. *)
+    extra_vars := !extra_vars @
+      (("heap_alloc_1", TInt), ETInt "heap_alloc_1") ::
+      List.map (fun name ->
+        let v = name ^ "_1" in ((v, TArr TInt), ETArr (v, Smt.TInt)))
+        (Ast.heap_array_names ());
     vcgen_extra_vars := !extra_vars
   end;
   let rec go (stmts: block) (vctrs: (string, int ref) Hashtbl.t) (wrap: sexp -> sexp) =

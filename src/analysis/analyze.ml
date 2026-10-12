@@ -329,7 +329,14 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
     | CommuteVarRMCtx ctx_exp | CommuteVarLMCtx ctx_exp ->
         let ctx_init = fst @@ Spec_generator.exp_to_smt_exp ctx_exp Spec_generator.right Spec_generator.variable_ctr_list in
         let state_names = List.map (fun (v, _) -> Servois2.Smt.string_of_var v) spec.state in
-        Some (subst_sfx "12" state_names ctx_init)
+        (* The existential order re-checks each method's precondition, heap
+           well-formedness included, at the state the other method left. A
+           block that havocs a TLoc global leaves that state unconstrained, so
+           without assuming well-formedness of the post-m1;m2 state too, a junk
+           pointer field there is a spurious counterexample. It holds in every
+           reachable state, so assuming it is sound. *)
+        let wf = Servois2.Smt.ELop (Servois2.Smt.And, Spec_generator.heap_wellformed ()) in
+        Some (subst_sfx "12" state_names (Servois2.Smt.ELop (Servois2.Smt.And, [ctx_init; wf])))
     | _ -> None
   in
   let result =
