@@ -121,6 +121,26 @@ let is_scalar (state_types : (string * Smt.ty) list) (smt : Smt.exp) : bool =
    version-mangling that would otherwise rename a variable to x_1, x_2, ... at
    each assignment. We want the expression as written, evaluated in whichever
    state version the column names -- not at some point inside a method body. *)
+(* True when every free variable of [e] is a state variable. A variable local
+   to a block (e.g. the env loop's tk) is not declared in the query, so asking
+   for its value makes the solver reject the whole (get-value ...) -- which,
+   after a "sat", loses the answer. *)
+let rec only_state_vars (names : string list) (e : Smt.exp) : bool =
+  let go = only_state_vars names in
+  let bound bs = List.map (fun (v, _) -> Smt.string_of_var v) bs in
+  match e with
+  | Smt.EVar v -> List.mem (Smt.string_of_var v) names
+  | Smt.EArg _ | Smt.EConst _ -> true
+  | Smt.EBop (_, a, b) -> go a && go b
+  | Smt.EUop (_, a) -> go a
+  | Smt.ELop (_, es) | Smt.EFunc (_, es) -> List.for_all go es
+  | Smt.EITE (c, t, f) -> go c && go t && go f
+  | Smt.ELet (bs, body) ->
+      List.for_all (fun (_, b) -> go b) bs
+      && only_state_vars (bound bs @ names) body
+  | Smt.EForall (bs, body) | Smt.EExists (bs, body) ->
+      only_state_vars (bound bs @ names) body
+
 let expr_table (blks : block node list) (state_types : (string * Smt.ty) list)
   : (string * Smt.exp) list =
   let state_names = List.map fst state_types in
@@ -162,7 +182,8 @@ let expr_table (blks : block node list) (state_types : (string * Smt.ty) list)
             | Smt.EForall (_, e) | Smt.EExists (_, e) -> mentions_state e
             | _ -> false
           in
-          if mentions_state smt then Some (label, smt) else None
+          if mentions_state smt && only_state_vars state_names smt
+          then Some (label, smt) else None
         | Some _ -> None
       end)
     exps
@@ -173,7 +194,8 @@ let probes ~(columns : (string * string) list) (table : (string * Smt.exp) list)
     (state_names : string list) : Smt.exp list =
   List.concat_map
     (fun (_, smt) ->
-      List.map (fun (sfx, _) -> subst_sfx sfx state_names smt) columns)
+      if not (only_state_vars state_names smt) then []
+      else List.map (fun (sfx, _) -> subst_sfx sfx state_names smt) columns)
     table
 
 (* ---------------------------------------------------------------- html -- *)

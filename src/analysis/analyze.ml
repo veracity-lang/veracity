@@ -325,18 +325,23 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   | CommuteVarLM | CommuteVarLMCtx _ -> Servois2.Solve.mode := Servois2.Solve.LeftMover
   | CommuteVarRM | CommuteVarRMCtx _ -> Servois2.Solve.mode := Servois2.Solve.RightMover
   | _ -> () end;
-  let ctx_12_opt = match cv with
+  let ctx_12_opt =
+    let state_names = List.map (fun (v, _) -> Servois2.Smt.string_of_var v) spec.state in
+    (* The existential order re-checks each method's precondition, heap
+       well-formedness included, at the state the other method left. A
+       block that havocs a TLoc global (or a heap array, as a loop summary
+       does) leaves that state unconstrained, so without assuming
+       well-formedness of the post-m1;m2 state too, a junk pointer field there
+       is a spurious counterexample. It holds in every reachable state, so
+       assuming it is sound. This applies to every mover check, with or
+       without a context. *)
+    let wf = Servois2.Smt.ELop (Servois2.Smt.And, Spec_generator.heap_wellformed ()) in
+    let at_12 e = Some (subst_sfx "12" state_names e) in
+    match cv with
     | CommuteVarRMCtx ctx_exp | CommuteVarLMCtx ctx_exp ->
         let ctx_init = fst @@ Spec_generator.exp_to_smt_exp ctx_exp Spec_generator.right Spec_generator.variable_ctr_list in
-        let state_names = List.map (fun (v, _) -> Servois2.Smt.string_of_var v) spec.state in
-        (* The existential order re-checks each method's precondition, heap
-           well-formedness included, at the state the other method left. A
-           block that havocs a TLoc global leaves that state unconstrained, so
-           without assuming well-formedness of the post-m1;m2 state too, a junk
-           pointer field there is a spurious counterexample. It holds in every
-           reachable state, so assuming it is sound. *)
-        let wf = Servois2.Smt.ELop (Servois2.Smt.And, Spec_generator.heap_wellformed ()) in
-        Some (subst_sfx "12" state_names (Servois2.Smt.ELop (Servois2.Smt.And, [ctx_init; wf])))
+        at_12 (Servois2.Smt.ELop (Servois2.Smt.And, [ctx_init; wf]))
+    | CommuteVarLM | CommuteVarRM -> at_12 wf
     | _ -> None
   in
   let result =
