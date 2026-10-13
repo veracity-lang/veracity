@@ -196,7 +196,8 @@ let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
     |> List.map snd
   in
   (* Heap well-formedness of the initial heap (the _1 versions the VC reads):
-     every pointer field of an allocated cell is null (-1) or allocated. It
+     every pointer field of an allocated cell is null (-1) or allocated, and
+     the self-loop-free ones do not point to their own cell. It
      holds in every reachable state, and mover checks already assume it via
      their method preconditions. Without it, "x != null" for a tloc (encoded
      as 0 <= x < heap_alloc) does not follow from "Head->next != null"
@@ -213,6 +214,12 @@ let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
            if not (List.mem arr declared_ids) then None
            else Some (sp "(assert (forall ((wf_x Int)) (=> (and (>= wf_x 0) (< wf_x %s)) (or (= (select %s wf_x) (- 1)) (and (>= (select %s wf_x) 0) (< (select %s wf_x) %s))))))"
                         alloc arr arr arr alloc))
+         ptr_fields
+      @ List.filter_map (fun (f : Ast.heap_field) ->
+           let arr = Ast.heap_array_name f.hf_name ^ "_1" in
+           if not (List.mem arr declared_ids && List.mem f.hf_name !Ast.self_loop_free_fields) then None
+           else Some (sp "(assert (forall ((wf_x Int)) (=> (and (>= wf_x 0) (< wf_x %s)) (not (= (select %s wf_x) wf_x)))))"
+                        alloc arr))
          ptr_fields
   in
   String.concat "\n" @@

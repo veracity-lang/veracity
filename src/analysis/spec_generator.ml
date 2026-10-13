@@ -669,15 +669,21 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
             let binds = List.concat_map snd compiled in
             let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
             let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+            (* Version the field arrays before the rest of the block is
+               compiled (OCaml evaluates [stores]'s argument first), so later
+               reads see the post-allocation arrays. *)
+            let versions =
+              List.map
+                (fun (field : Ast.heap_field) ->
+                  mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs)
+                layout
+            in
             (* Folded right so the fields nest in declaration order. *)
             let stores rest =
               List.fold_right
-                (fun ((field : Ast.heap_field), (rtn, _)) acc ->
-                  let arr, arr' =
-                    mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs
-                  in
+                (fun ((arr, arr'), (rtn, _)) acc ->
                   ELet ([to_var arr', EFunc ("store", [arr; heapallocv; rtn])], acc))
-                (List.combine layout compiled)
+                (List.combine versions compiled)
                 rest
             in
             bind binds @@ ELet ([(path_smt, heapallocv)],
@@ -1028,7 +1034,17 @@ let heap_wellformed () : sexp list =
       ) loc_varnames)
       loc_fields
   in
-  heap_inv :: loc_valid @ heap_next_valid
+  (* Pointer fields the client proved never point to their own cell. *)
+  let no_self_loop =
+    List.concat_map (fun (field : Ast.heap_field) ->
+      if not (List.mem field.hf_name !Ast.self_loop_free_fields) then [] else
+      let arr = Ast.heap_array_name field.hf_name in
+      List.map (fun v ->
+        EUop (Not, EBop (Eq, EFunc ("select", [EVar (Var arr); EVar (Var v)]), EVar (Var v))))
+        loc_varnames)
+      loc_fields
+  in
+  heap_inv :: loc_valid @ heap_next_valid @ no_self_loop
 
 let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let args = List.map (fun (ty,id) -> (Smt.Var id, sty_of_ty ty)) m.args in
@@ -1136,6 +1152,11 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
 let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * sexp) list =
   let bind = function [] -> Fun.id | exp -> fun e -> ELet(exp, e) in
   let to_var = function EVar v -> v | _ -> failwith "expected EVar" in
+  (* The SSA name of a variable version, for naming its havoc binder. *)
+  let arr_new_name = function
+    | Smt.Var v | Smt.VarPost v -> v
+    | Smt.VarM (left, v) -> (if left then "l_" else "r_") ^ v
+  in
   let vcs = ref [] in
   (* Keep vcgen_extra_vars in sync with extra_vars so that infer_gstates_type
      can find types of local variables accumulated during VCGen (e.g. q : TArr
@@ -1203,14 +1224,22 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
             let compiled = List.map (fun e -> etse e right vctrs) initializers in
             let binds = List.concat_map snd compiled in
             let heapallocv, heapallocv' = mk_var_pair "heap_alloc" right vctrs in
+            (* Version the field arrays now, before [go] translates the rest
+               of the block. Doing it inside [stores], which only runs once
+               the continuation is applied, left every later read of a field
+               on the pre-allocation array (heap_f_1 instead of heap_f_2), so
+               a fresh cell's fields read as unconstrained. *)
+            let versions =
+              List.map
+                (fun (field : Ast.heap_field) ->
+                  mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs)
+                layout
+            in
             let stores k =
               List.fold_right
-                (fun ((field : Ast.heap_field), (smt, _)) acc ->
-                  let arr, arr' =
-                    mk_var_pair (Ast.heap_array_name field.hf_name) right vctrs
-                  in
+                (fun ((arr, arr'), (smt, _)) acc ->
                   ELet ([to_var arr', EFunc("store", [arr; heapallocv; smt])], acc))
-                (List.combine layout compiled)
+                (List.combine versions compiled)
                 k
             in
             go tl vctrs (fun k ->
@@ -1289,7 +1318,10 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
             begin try
               let loc_smt, loc_binds = etse loc_exp right vctrs in
               let arr, arr' = mk_var_pair (Ast.heap_array_name field) right vctrs in
-              let hvid = Ast.heap_array_name field ^ "_havoc_val" in
+              (* Named after the new SSA version, so a second havoc of the
+                 same field doesn't reuse (shadow) the binder: CVC5 rejects
+                 a binder that shadows a name used in an enclosing let. *)
+              let hvid = arr_new_name (to_var arr') ^ "_havoc_val" in
               go tl vctrs (fun k ->
                 wrap (bind loc_binds @@
                   EForall ([(Var hvid, Smt.TInt)],
@@ -1312,7 +1344,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               let idx_smt, idx_binds = etse idx_exp right vctrs in
               let arr_new = match etse id_exp left vctrs with
                 EVar v, _ -> v | _ -> failwith "havoc index: lhs" in
-              let havoc_id = id ^ "_elem_havoc" in
+              let havoc_id = arr_new_name arr_new ^ "_elem_havoc" in
               let elem_sty =
                 match infer_gstates_type e with
                 | TArr t -> sty_of_ty t
@@ -1331,7 +1363,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               let id = base_id e in
               let new_id = match fst @@ etse (no_loc (Id id)) left vctrs with
                 EVar v -> v | _ -> failwith "havoc" in
-              let havoc_id = id ^ "_havoc" in
+              let havoc_id = arr_new_name new_id ^ "_havoc" in
               let exp_smt, _ = etse (no_loc @@ Id havoc_id) right vctrs in
               let havoc_sty =
                 match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with

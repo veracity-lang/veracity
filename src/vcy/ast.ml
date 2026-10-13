@@ -359,6 +359,13 @@ let default_heap_layout : heap_field list =
 
 let heap_layout : heap_field list ref = ref default_heap_layout
 
+(* Pointer fields known never to point to their own cell (heap_f[x] != x for
+   every allocated x). Veracity cannot establish this itself; a client that
+   justifies it from the whole program (ConQuoer's
+   Independence.self_loop_free_fields) installs it, and the heap
+   well-formedness assumptions then include it. Empty by default. *)
+let self_loop_free_fields : string list ref = ref []
+
 let heap_field_names () = List.map (fun f -> f.hf_name) !heap_layout
 let heap_arity () = List.length !heap_layout
 
