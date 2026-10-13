@@ -233,6 +233,8 @@ let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
 (* Verify every assert() in block.  vars are the method parameters (or any
    variables in scope before the block); they become SMT declare-funs.
    Returns (location, result) for each assert found. *)
+let assert_fail_counter = ref 0
+
 let check_asserts_of_block (block: Ast.block)
     (vars: ty bindlist)
     (prover: (module Servois2.Provers.Prover))
@@ -256,13 +258,23 @@ let check_asserts_of_block (block: Ast.block)
     with
     | result -> Some (loc, result)
     | exception e ->
+      (* A solver error or timeout is no verdict: report the assert as
+         unknown (so it is not verified, and a caller may retry with another
+         solver) rather than dropping it, which counted it as verified. The
+         query goes to this run's directory, if any. *)
       let query_for_diag = assert_smt_query (embedding @ !extra_vars) vc in
-      let tmp = Filename.temp_file "conquoer_vc_fail_" ".smt2" in
-      (try let oc = open_out tmp in output_string oc query_for_diag; close_out oc
-       with _ -> ());
-      Printf.eprintf "Warning: skipping assert at %s: %s [query dumped to %s]\n"
-        (Range.string_of_range loc) (Printexc.to_string e) tmp;
-      None
+      let dumped =
+        match (match !Util.session_dir with Some d -> Some d | None -> !Util.output_root) with
+        | None -> "not dumped"
+        | Some dir ->
+          incr assert_fail_counter;
+          let f = Filename.concat dir (Printf.sprintf "assert_fail_%04d.smt2" !assert_fail_counter) in
+          (try let oc = open_out f in output_string oc query_for_diag; close_out oc; "dumped to " ^ f
+           with _ -> "not dumped")
+      in
+      Printf.eprintf "Warning: assert at %s is unknown: %s [query %s]\n"
+        (Range.string_of_range loc) (Printexc.to_string e) dumped;
+      Some (loc, Servois2.Provers.Unknown)
   ) vcs
 
 (* Scan every method in prog and check its assert() statements. *)
