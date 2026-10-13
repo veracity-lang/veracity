@@ -89,6 +89,10 @@ let get_stypes (embedding_vars : (ty binding * ety) list) : sty bindlist =
 
 let smt_negone () = (EUop (Smt.Neg, Smt.EConst (CInt (1))))
 
+(* -1 as a literal, for the element of a constant array: CVC5 requires a
+   value there and rejects the term (- 1). *)
+let const_negone = Smt.EConst (Smt.CInt (-1))
+
 let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servois2.Smt.pred_sig list =
   List.iter (
     fun (_,sty) -> predicates_list := Smt.PredSig ("=", [sty; sty]) :: !predicates_list;
@@ -185,7 +189,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
       | CNull (TArr TLoc) ->
           (* null tloc[] — encode as SMT constant array of -1 (null TLoc) values so that
              array-typed Location slots can be compared/assigned without a type mismatch. *)
-          let null_arr = EFunc ("(as const (Array Int Int))", [smt_negone ()]) in
+          let null_arr = EFunc ("(as const (Array Int Int))", [const_negone]) in
           terms := !terms @ [(null_arr, TArr TLoc)]; (null_arr, TArr TLoc)
       | CNull _ -> terms := !terms @ [(smt_negone(), TInt)]; (smt_negone(), TInt)
       | CBool b -> terms := !terms @ [(Smt.EConst (CBool b), TBool)]; (Smt.EConst (CBool b), TBool)
@@ -398,14 +402,14 @@ let rec infer_gstates_type (e: exp node) : ty =
    a constant-array null ((as const (Array Int Int)) -1) rather than -1. *)
 let null_arr_elem_smt (arr_e: exp node) : sexp =
   match infer_gstates_type arr_e with
-  | TArr (TArr TLoc) -> EFunc ("(as const (Array Int Int))", [smt_negone ()])
+  | TArr (TArr TLoc) -> EFunc ("(as const (Array Int Int))", [const_negone])
   | _ -> smt_negone ()
 
 (* Return the SMT null for an expression of type [ty]:
    TArr TLoc → null array; anything else → scalar -1. *)
 let null_smt_for_type (ty: ty) : sexp =
   match ty with
-  | TArr TLoc -> EFunc ("(as const (Array Int Int))", [smt_negone ()])
+  | TArr TLoc -> EFunc ("(as const (Array Int Int))", [const_negone])
   | _ -> smt_negone ()
 
 let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist =
@@ -413,7 +417,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
     | CNull (TArr TLoc) ->
-        EFunc ("(as const (Array Int Int))", [smt_negone ()]), []
+        EFunc ("(as const (Array Int Int))", [const_negone]), []
     | CNull _ -> smt_negone(), []
     | CStr str -> Smt.EConst (CString str), []
     | Id id ->
