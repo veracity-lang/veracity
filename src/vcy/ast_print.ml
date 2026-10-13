@@ -190,15 +190,18 @@ module AstPP = struct
           pp_close_box fmt ()
       | HDeref (l1, field) ->
           print_exp_aux this_level fmt l1; pps ("->" ^ field)
+      (* A quantifier's body extends as far right as the parser can take it,
+         so print the quantifier parenthesized: otherwise (forall u . A) && B
+         re-parses as forall u . (A && B). *)
       | Exists (id, ty, body) ->
           pp_open_box fmt 0;
-          pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
-          print_exp_aux 0 fmt body;
+          pps "(exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
+          print_exp_aux 0 fmt body; pps ")";
           pp_close_box fmt ()
       | Forall (id, ty, body) ->
           pp_open_box fmt 0;
-          pps "forall "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
-          print_exp_aux 0 fmt body;
+          pps "(forall "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
+          print_exp_aux 0 fmt body; pps ")";
           pp_close_box fmt ()
       | _ -> failwith ("print_exp_aux: match failed for ")
 
