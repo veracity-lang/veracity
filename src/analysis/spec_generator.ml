@@ -378,11 +378,18 @@ let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int
 (* Tracks variables bound by 'exists' so they bypass version-mangling in Id. *)
 let bound_vars : (string, unit) Hashtbl.t = Hashtbl.create 4
 
+(* Declared types of the quantifier-bound variables in scope, so a bound
+   tloc's "u != null" gets the allocated-cell encoding (0 <= u < heap_alloc)
+   like any other tloc, not plain u != -1. Hashtbl.add/remove nest, so an
+   inner binder of the same name shadows an outer one. *)
+let bound_var_types : (string, ty) Hashtbl.t = Hashtbl.create 4
+
 (* Infer the VCY type of an expression by looking up global state types.
    Only inspects Id and Index nodes — sufficient for detecting array-typed
    sub-expressions that need null-array encoding instead of -1. *)
 let rec infer_gstates_type (e: exp node) : ty =
   match e.elt with
+  | Id id when Hashtbl.mem bound_var_types id -> Hashtbl.find bound_var_types id
   | Id id ->
       (match List.find_opt (fun ((v, _), _) -> String.equal v id) !gstates with
        | Some ((_, ty), _) -> ty
@@ -550,13 +557,17 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
 
     | Exists (id, ty, body) ->
         Hashtbl.add bound_vars id ();
+        Hashtbl.add bound_var_types id ty;
         let r, binds = exp_to_smt_exp body side ~indexed vctrs in
+        Hashtbl.remove bound_var_types id;
         Hashtbl.remove bound_vars id;
         EExists ([(Var id, sty_of_ty ty)], r), binds
 
     | Forall (id, ty, body) ->
         Hashtbl.add bound_vars id ();
+        Hashtbl.add bound_var_types id ty;
         let r, binds = exp_to_smt_exp body side ~indexed vctrs in
+        Hashtbl.remove bound_var_types id;
         Hashtbl.remove bound_vars id;
         EForall ([(Var id, sty_of_ty ty)], r), binds
 
