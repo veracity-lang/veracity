@@ -1279,6 +1279,10 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
           end
 
       (* ── Havoc ───────────────────────────────────────────────────── *)
+      (* The VC is a goal (checked as UNSAT of its negation), so a havoc'd
+         value is universally quantified: the assert must hold for every
+         value. An existential here would let the solver pick a value that
+         satisfies the assert, verifying e.g. havoc x; assert(x > 5). *)
       | Havoc e ->
           begin match e.elt with
           | HDeref (loc_exp, field) ->
@@ -1288,7 +1292,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               let hvid = Ast.heap_array_name field ^ "_havoc_val" in
               go tl vctrs (fun k ->
                 wrap (bind loc_binds @@
-                  EExists ([(Var hvid, Smt.TInt)],
+                  EForall ([(Var hvid, Smt.TInt)],
                     ELet ([to_var arr',
                            EFunc ("store", [arr; loc_smt; EVar (Var hvid)])], k))))
             with _ -> go tl vctrs wrap end
@@ -1316,7 +1320,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               in
               go tl vctrs (fun k ->
                 wrap (bind idx_binds @@
-                  EExists ([(Var havoc_id, elem_sty)],
+                  EForall ([(Var havoc_id, elem_sty)],
                     ELet ([(arr_new, EFunc ("store", [arr_smt; idx_smt; EVar (Var havoc_id)]))], k))))
             with _ -> go tl vctrs wrap end
           | _ ->
@@ -1338,7 +1342,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
                   | None -> Smt.TInt
               in
               go tl vctrs (fun k ->
-                wrap (EExists ([(Var havoc_id, havoc_sty)], ELet ([new_id, exp_smt], k))))
+                wrap (EForall ([(Var havoc_id, havoc_sty)], ELet ([new_id, exp_smt], k))))
             with _ -> go tl vctrs wrap end
           end
 
@@ -1386,7 +1390,7 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
             let existentials = List.map (fun (_, _, hv, sty) -> (Smt.Var hv, sty)) havoc_triples in
             let lets = List.map (fun (nid, e, _, _) -> (nid, e)) havoc_triples in
             go tl vctrs (fun k ->
-              wrap (EExists (existentials, ELet (lets, ELop (And, [exit_cond; k])))))
+              wrap (EForall (existentials, ELet (lets, EBop (Imp, exit_cond, k)))))
           with _ -> go tl vctrs wrap end
 
       | Assume e ->
