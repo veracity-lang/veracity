@@ -195,10 +195,31 @@ let assert_smt_query (embedding_vars: embedding_map) (vc: Smt.exp) : string =
     |> List.filter (fun (name, _) -> not (List.mem name declared_ids))
     |> List.map snd
   in
+  (* Heap well-formedness of the initial heap (the _1 versions the VC reads):
+     every pointer field of an allocated cell is null (-1) or allocated. It
+     holds in every reachable state, and mover checks already assume it via
+     their method preconditions. Without it, "x != null" for a tloc (encoded
+     as 0 <= x < heap_alloc) does not follow from "Head->next != null"
+     (encoded as != -1) after x = Head->next. *)
+  let wf =
+    let ptr_fields =
+      List.filter (fun (f : Ast.heap_field) -> f.hf_type = TLoc) !Ast.heap_layout in
+    let alloc = "heap_alloc_1" in
+    if not (List.mem alloc declared_ids) then []
+    else
+      sp "(assert (>= %s 0))" alloc
+      :: List.filter_map (fun (f : Ast.heap_field) ->
+           let arr = Ast.heap_array_name f.hf_name ^ "_1" in
+           if not (List.mem arr declared_ids) then None
+           else Some (sp "(assert (forall ((wf_x Int)) (=> (and (>= wf_x 0) (< wf_x %s)) (or (= (select %s wf_x) (- 1)) (and (>= (select %s wf_x) 0) (< (select %s wf_x) %s))))))"
+                        alloc arr arr arr alloc))
+         ptr_fields
+  in
   String.concat "\n" @@
     ["(set-logic ALL)"]
     @ decls
     @ heap_decls
+    @ wf
     @ [ sp "(assert (not %s))" (Servois2.Smt.string_of_smt vc)
       ; "(check-sat)" ]
 
@@ -220,6 +241,9 @@ let check_asserts_of_block (block: Ast.block)
   List.filter_map (fun (loc, vc) ->
     match
       let query = assert_smt_query (embedding @ !extra_vars) vc in
+      (* $VCY_ASSERT_DEBUG: print each assert's query, for debugging the VC encoding. *)
+      if Sys.getenv_opt "VCY_ASSERT_DEBUG" <> None then
+        Printf.eprintf ";; assert at %s\n%s\n%!" (Range.string_of_range loc) query;
       Servois2.Provers.parse_prover_output prover
         (Servois2.Provers.run_prover prover query)
     with
