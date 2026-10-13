@@ -619,6 +619,9 @@ and loop_modified_in_stmt (stmt : stmt node) : string list =
       List.concat_map (fun b -> loop_modified_vars b.elt) blocks
   | _ -> []
 
+
+let elem_havoc_ctr = ref 0
+
 let compile_block_to_smt_exp (genv: global_env) (b : block) =
   let local_variable_ctr_list = variable_ctr_list in
   let bind = function
@@ -835,12 +838,13 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
             let arr_new, _   = match exp_to_smt_exp id_exp left vctrs with
                                | Smt.EVar v, b -> v, b
                                | _ -> failwith "havoc index: lhs" in
-            let havoc_id = id ^ "_elem_havoc" in
-            let elem_sty =
-              match infer_gstates_type e with
-              | TArr t -> sty_of_ty t
-              | _ -> Smt.TInt
-            in
+            (* Unique per havoc: a path may havoc the same cell twice, and
+               a reused binder is shadowing CVC5 rejects inside a let. *)
+            incr elem_havoc_ctr;
+            let havoc_id = Printf.sprintf "%s_elem_havoc_%d" id !elem_havoc_ctr in
+            (* e is the havocked cell, so its type is the element type
+               (stripping one more array level made a tloc[] cell an Int). *)
+            let elem_sty = sty_of_ty (infer_gstates_type e) in
             EExists ([(Var havoc_id, elem_sty)],
               ELet ([arr_new, EFunc ("store", [arr_smt; idx_smt; EVar (Var havoc_id)])],
                 compile_block_to_smt tl vctrs))
@@ -1359,12 +1363,9 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
               let idx_smt, idx_binds = etse idx_exp right vctrs in
               let arr_new = match etse id_exp left vctrs with
                 EVar v, _ -> v | _ -> failwith "havoc index: lhs" in
-              let havoc_id = arr_new_name arr_new ^ "_elem_havoc" in
-              let elem_sty =
-                match infer_gstates_type e with
-                | TArr t -> sty_of_ty t
-                | _ -> Smt.TInt
-              in
+              incr elem_havoc_ctr;
+              let havoc_id = Printf.sprintf "%s_elem_havoc_%d" (arr_new_name arr_new) !elem_havoc_ctr in
+              let elem_sty = sty_of_ty (infer_gstates_type e) in
               go tl vctrs (fun k ->
                 wrap (bind idx_binds @@
                   EForall ([(Var havoc_id, elem_sty)],
